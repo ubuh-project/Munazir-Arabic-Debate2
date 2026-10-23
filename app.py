@@ -77,6 +77,28 @@ LOGO_SVG = (
     "</svg>"
 )
 
+# ── ANIMASI LOGO 3D (video) ──
+# Taruh file video logo di folder  static/  (sejajar dengan app.py):
+#   static/logo3d.mp4   ← wajib (jalan di semua browser, termasuk iPhone)
+#   static/logo3d.webm  ← opsional (lebih ringan, bisa berlatar transparan)
+# Kalau file belum ada, website tetap jalan seperti biasa tanpa animasi.
+STATIC_DIR = APP_DIR / "static"
+LOGO_VIDEO = [("logo3d.webm", "video/webm"), ("logo3d.mp4", "video/mp4")]
+SPLASH_DETIK = 4.2  # lama layar pembuka tampil sebelum memudar (detik)
+
+
+def video_logo(kelas: str, ulang: bool = True) -> str:
+    """Tag <video> logo 3D; kosong bila file video belum diunggah."""
+    sumber = "".join(
+        f"<source src='app/static/{nama}' type='{tipe}'>"
+        for nama, tipe in LOGO_VIDEO if (STATIC_DIR / nama).exists()
+    )
+    if not sumber:
+        return ""
+    loop = " loop" if ulang else ""
+    return (f"<video class='{kelas}' autoplay muted{loop} playsinline preload='auto' "
+            f"aria-label='Logo MUNAZIR'>{sumber}</video>")
+
 # Ikon menu atas (Material Symbols bawaan Streamlit)
 IKON_MENU = {
     "sistem_debat": ":material/balance:",
@@ -859,6 +881,21 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .hero-ar{ font-family:var(--arab); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:1.45; color:var(--ink); text-align:right; margin:0 0 1.2rem; }
 .hero-grid{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:clamp(1.8rem, 5vw, 4.5rem); margin-top:2.2rem; align-items:start; }
 .hero-lead{ font-family:var(--serif); font-size:clamp(1.2rem, 2.2vw, 1.45rem); line-height:1.5; color:var(--ink); margin:0 0 1.8rem; max-width:34ch; }
+.hero-head{ display:flex; align-items:center; gap:clamp(1rem, 3vw, 2.6rem); margin:0 0 1.2rem; }
+.hero-head .hero-ar{ flex:1; min-width:0; margin:0; }
+.hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto; animation:logo-in 1s var(--ease) both; }
+/* tepi video dibuat lembut agar menyatu dengan latar halaman */
+.hero-logo, .splash-logo{ -webkit-mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%);
+  mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%); }
+@keyframes logo-in{ from{ opacity:0; transform:scale(.82) rotate(-8deg); } to{ opacity:1; transform:none; } }
+
+/* Layar pembuka (muncul sekali saat website dibuka) */
+.splash{ position:fixed; inset:0; z-index:1000001; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.1rem;
+  background:var(--paper); pointer-events:none; animation:splash-out .8s var(--ease) var(--t, 3.5s) forwards; }
+.splash-logo{ width:min(56vw, 340px); height:auto; animation:logo-in 1s var(--ease) both; }
+.splash-nama{ font-family:var(--serif); font-size:1.05rem; letter-spacing:.32em; color:var(--ink-2); animation:logo-in 1s var(--ease) .35s both; }
+.splash-nama span{ font-family:var(--arab); letter-spacing:0; font-size:1.4rem; margin-left:.6rem; }
+@keyframes splash-out{ to{ opacity:0; visibility:hidden; } }
 .hero-cta{ display:flex; flex-wrap:wrap; align-items:center; gap:.6rem 1.4rem; }
 .stats{ display:flex; flex-wrap:wrap; gap:1.2rem 2.6rem; margin:2.4rem 0 0; padding-top:1.3rem; border-top:1px solid var(--rule-soft); }
 .stats div{ margin:0; } .stats dt{ font-size:.7rem; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); }
@@ -953,6 +990,8 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 @media (max-width: 520px){
   .steps{ grid-template-columns:1fr; }
   .pf{ grid-template-columns:1fr; }
+  .hero-head{ flex-direction:column; align-items:center; }
+  .hero-head .hero-ar{ width:100%; }
   .doc.kitab{ padding:1.8rem 1.1rem; }
 }
 
@@ -960,6 +999,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 @media (prefers-reduced-motion: reduce){
   *, *::before, *::after{ animation:none !important; transition:none !important; }
   .count{ --n:var(--to); } .khatam path, .khatam circle{ stroke-dashoffset:0; }
+  .splash{ display:none !important; }
 }
 </style>
 """
@@ -1141,7 +1181,8 @@ def page_home(kb):
         "<section class='hero'>"
         "<div class='hero-top reveal'><span class='eyebrow'>Panduan debat bahasa Arab</span>"
         "<span class='hero-meta'>Format Qatar Debate · untuk pelajar, santri, dan mahasiswa</span></div>"
-        "<div class='hero-ar ink-in' dir='rtl' lang='ar'>أَتْقِنْ فَنَّ الْمُنَاظَرَةِ بِاللُّغَةِ الْعَرَبِيَّةِ</div>"
+        f"<div class='hero-head'>{video_logo('hero-logo')}"
+        "<div class='hero-ar ink-in' dir='rtl' lang='ar'>أَتْقِنْ فَنَّ الْمُنَاظَرَةِ بِاللُّغَةِ الْعَرَبِيَّةِ</div></div>"
         "<div class='rule-draw'></div>"
         "<div class='hero-grid'><div>"
         "<p class='hero-lead reveal' style='--i:2'>Belajar debat bahasa Arab dari dasar: sistem, mosi, ibarah, kamus, dan muqaddimah. "
@@ -1697,6 +1738,17 @@ def main():
     st.set_page_config(page_title="MUNAZIR · مُنَاظِر", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
     st.markdown(CSS, unsafe_allow_html=True)
     st.session_state.setdefault("uploads", [])
+
+    # Layar pembuka animasi logo 3D: hanya sekali tiap kali website dibuka
+    if not st.session_state.get("splash_tampil"):
+        st.session_state["splash_tampil"] = True
+        vid = video_logo("splash-logo", ulang=False)
+        if vid:
+            st.markdown(
+                f"<div class='splash' style='--t:{SPLASH_DETIK}s' aria-hidden='true'>{vid}"
+                "<div class='splash-nama'>MUNAZIR<span lang='ar'>مُنَاظِر</span></div></div>",
+                unsafe_allow_html=True,
+            )
     try:
         st.logo(LOGO_SVG, size="large")
     except Exception:
