@@ -1,0 +1,64 @@
+# MUNAZIR – Jaga agar aplikasi Streamlit tetap bangun
+name: Keep Streamlit Awake
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"     # setiap 4 jam (waktu UTC)
+  workflow_dispatch:          # bisa juga dijalankan manual dari tab Actions
+
+permissions:
+  actions: write              # dibutuhkan agar jadwal tidak dimatikan GitHub setelah 60 hari
+
+env:
+  APP_URL: "https://munadzir-arabic-debate.streamlit.app/"
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Buka & bangunkan aplikasi
+        run: |
+          python - <<'EOF'
+          import os, re
+          from playwright.sync_api import sync_playwright
+
+          url = os.environ["APP_URL"]
+          wake_text = re.compile(r"get this app back up", re.I)
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              print("Membuka", url)
+              page.goto(url, wait_until="domcontentloaded", timeout=90_000)
+              page.wait_for_timeout(10_000)
+
+              clicked = False
+              for frame in page.frames:
+                  btn = frame.get_by_role("button", name=wake_text)
+                  if btn.count() > 0:
+                      btn.first.click()
+                      clicked = True
+                      break
+
+              if clicked:
+                  print("Aplikasi sedang tidur -> tombol bangun diklik. Menunggu aplikasi menyala...")
+                  page.wait_for_timeout(90_000)
+              else:
+                  print("Aplikasi sudah aktif.")
+                  page.wait_for_timeout(15_000)
+
+              browser.close()
+          EOF
+
+      - name: Cegah jadwal dinonaktifkan otomatis
+        uses: liskin/gh-workflow-keepalive@v1
