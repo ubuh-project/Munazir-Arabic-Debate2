@@ -600,7 +600,7 @@ def call_llm(messages, temperature: float = 0.3, max_tokens: int = 1800) -> str:
     raise RuntimeError(f"Gagal menghubungi Groq: {last_err}")
 
 
-SYSTEM_CHAT = """Kamu adalah MUNAZIR (مُنَاظِر), asisten AI panduan dan pedoman debat bahasa Arab (munazarah).
+SYSTEM_CHAT = """Kamu adalah MUNAZIR (مُنَاظِرٌ), asisten AI panduan dan pedoman debat bahasa Arab (munazarah).
 Tugasmu membantu pengguna menemukan materi dari BASIS PENGETAHUAN: sistem debat, mosi, ibarah, kosa kata, dan muqaddimah.
 KONTEKS berisi dua jenis sumber: [Materi …] = materi resmi MUNAZIR, dan [Internet …] = hasil pencarian dari situs terpercaya.
 
@@ -611,10 +611,13 @@ ATURAN:
 2. Jika konteks tidak memuat jawabannya, katakan dengan sopan bahwa materi tersebut belum tersedia
    dan sarankan pengguna mengunggah file materi yang relevan. Untuk salam/sapaan, balas singkat dan ramah.
 3. Penjelasan ditulis dalam bahasa Indonesia yang jelas dan rapi (boleh memakai poin-poin).
-4. Bagian ARAB berisi kutipan teks Arab PERSIS dari konteks yang relevan dengan jawaban (salin apa adanya, jangan diubah).
-   Jika konteks tidak memuat teks Arab yang relevan, tulis terjemahan Arab fusha dari jawabanmu dan awali dengan "(ترجمة)".
+4. Bagian ARAB berisi kutipan teks Arab dari konteks yang relevan dengan jawaban. Jangan mengubah kata-katanya,
+   tetapi WAJIB lengkapi dengan harakat (syakal) penuh dan benar pada setiap huruf, termasuk harakat akhir (i'rab).
+   Jika konteks tidak memuat teks Arab yang relevan, tulis terjemahan Arab fusha dari jawabanmu dengan harakat
+   lengkap dan awali dengan "(تَرْجَمَةٌ)".
 5. Bagian SUMBER berisi nama file (untuk [Materi …]) dan URL lengkap (untuk [Internet …]) yang benar-benar dipakai,
    dipisahkan koma. Tulis "-" jika tidak ada.
+6. Setiap kata atau istilah Arab yang muncul di bagian JAWABAN juga WAJIB diberi harakat lengkap.
 
 FORMAT WAJIB (gunakan penanda persis seperti ini):
 [JAWABAN]
@@ -631,6 +634,7 @@ Jangan menjawab pertanyaannya. Jangan beri penjelasan."""
 SYSTEM_TRANSLATE = """Kamu adalah penerjemah ahli bahasa Indonesia ⇄ bahasa Arab fusha, khusus konteks debat (munazarah).
 Jika GLOSARIUM diberikan, utamakan istilah baku dari glosarium tersebut.
 Terjemahkan secara akurat, alami, dan sesuai gaya bahasa debat formal.
+Setiap teks Arab yang kamu tulis (hasil terjemahan maupun istilah di catatan) WAJIB diberi harakat (syakal) lengkap dan benar.
 
 FORMAT WAJIB:
 [TERJEMAHAN]
@@ -739,19 +743,26 @@ h1, h2, h3, h4{ font-family:var(--serif) !important; color:var(--ink) !important
 [data-testid="stWidgetLabel"] p{ font-size:.85rem !important; font-weight:500 !important; color:var(--ink-2) !important; }
 [data-testid="stCaptionContainer"]{ color:var(--muted) !important; }
 
-/* ───────── Gerak (animasi) ───────── */
+/* ───────── Gerak (animasi) ─────────
+   Animasi HANYA dipakai di bagian pembuka: layar pembuka (.splash) dan
+   bagian atas Beranda saat website pertama kali dibuka (.intro).
+   Halaman lain (memilih menu/tema, tab, panel, chat) tampil tanpa animasi. */
 @keyframes rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
-@keyframes fade{ from{ opacity:0; } to{ opacity:1; } }
 @keyframes draw{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
 @keyframes inkIn{ from{ clip-path:inset(0 0 0 100%); } to{ clip-path:inset(0 0 0 0); } }
-@keyframes stroke{ to{ stroke-dashoffset:0; } }
 @property --n{ syntax:'<integer>'; inherits:false; initial-value:0; }
 @keyframes count{ from{ --n:0; } to{ --n:var(--to); } }
-.reveal{ animation:rise .7s var(--ease) both; animation-delay:calc(var(--i, 0) * 90ms); }
-.rule-draw{ height:1px; background:var(--rule); transform-origin:left; animation:draw 1s var(--ease) .2s both; }
-.ink-in{ animation:inkIn 1.3s var(--ease) .15s both; }
+.rule-draw{ height:1px; background:var(--rule); }
+.intro .reveal{ animation:rise .7s var(--ease) both; animation-delay:calc(var(--i, 0) * 90ms); }
+.intro .rule-draw{ transform-origin:left; animation:draw 1s var(--ease) .2s both; }
+.intro .ink-in{ animation:inkIn 1.3s var(--ease) .15s both; }
 .count{ counter-reset:n var(--n); animation:count 1.6s var(--ease) .5s both; font-variant-numeric:tabular-nums; }
 .count::after{ content:counter(n); }
+
+/* ───────── Teks Arab: jarak & ruang untuk harakat ───────── */
+[lang="ar"], [dir="rtl"]{ line-height:2; }
+.ar-in{ font-family:var(--arab); font-size:1.2em; line-height:2.1; margin:0 .35em; padding:0 .1em; unicode-bidi:isolate; }
+.stMarkdown p:has(.ar-in), .snip div:has(.ar-in), .id-box:has(.ar-in){ line-height:2.1; }
 
 /* ───────── Tipografi kecil ───────── */
 .eyebrow{ font-family:var(--sans); font-size:.72rem; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--brass-ink); }
@@ -760,9 +771,9 @@ mark{ background:rgba(165,122,44,.22); color:inherit; padding:0 .1em; border-rad
 
 /* ───────── Judul halaman ───────── */
 .ph{ margin:0 0 1.8rem; }
-.ph-row{ display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:.3rem 1.5rem; margin:.55rem 0 .5rem; }
+.ph-row{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.8rem 2rem; margin:.7rem 0 1rem; }
 .ph-t{ font-family:var(--serif); font-size:clamp(2rem, 4vw, 2.85rem); line-height:1.08; color:var(--ink); letter-spacing:-.02em; }
-.ph-a{ font-family:var(--arab); font-size:clamp(1.45rem, 3vw, 2rem); color:var(--brass-ink); line-height:1.6; }
+.ph-a{ font-family:var(--arab); font-size:clamp(1.45rem, 3vw, 2rem); color:var(--brass-ink); line-height:1.9; padding:.2rem 0; }
 .ph-d{ color:var(--muted); max-width:64ch; margin:0 0 1.3rem; line-height:1.65; }
 
 /* ───────── Tombol ───────── */
@@ -811,13 +822,12 @@ input::placeholder, textarea::placeholder{ color:#A39684 !important; }
 [data-baseweb="tab"]:hover p, [data-baseweb="tab"][aria-selected="true"] p{ color:var(--ink) !important; }
 [data-baseweb="tab-highlight"]{ background:var(--ink) !important; height:2px !important; }
 [data-baseweb="tab-border"]{ display:none !important; }
-[data-baseweb="tab-panel"]{ padding-top:1.5rem !important; animation:fade .45s var(--ease); }
+[data-baseweb="tab-panel"]{ padding-top:1.5rem !important; }
 
 /* ───────── Panel lipat, info, unggah ───────── */
 [data-testid="stExpander"] details{ background:var(--paper-2) !important; border:1px solid var(--rule) !important; border-radius:var(--r) !important; }
 [data-testid="stExpander"] summary p{ font-weight:500 !important; color:var(--ink) !important; font-size:.92rem !important; transition:color .2s; }
 [data-testid="stExpander"] summary:hover p{ color:var(--brass-ink) !important; }
-[data-testid="stExpander"] details[open] > div{ animation:fade .35s var(--ease); }
 [data-testid="stAlert"] > div, [data-testid="stAlertContainer"]{ background:var(--paper-2) !important; border:1px solid var(--rule) !important;
   border-left:3px solid var(--brass) !important; border-radius:8px !important; color:var(--ink) !important; }
 [data-testid="stFileUploaderDropzone"]{ background:var(--paper-2) !important; border:1px dashed var(--rule) !important; border-radius:var(--r) !important; transition:border-color .2s; }
@@ -825,7 +835,7 @@ input::placeholder, textarea::placeholder{ color:#A39684 !important; }
 
 /* ───────── Chat ───────── */
 [data-testid="stChatMessage"]{ background:transparent !important; border:none !important; border-bottom:1px solid var(--rule-soft) !important;
-  border-radius:0 !important; padding:1.1rem 0 !important; gap:.9rem; animation:rise .5s var(--ease) both; }
+  border-radius:0 !important; padding:1.1rem 0 !important; gap:.9rem; }
 [data-testid="stChatMessage"][aria-label*="user" i]{ flex-direction:row-reverse; border-bottom:none !important; }
 [data-testid="stChatMessage"][aria-label*="user" i] [data-testid="stChatMessageContent"]{ flex:0 1 auto; max-width:min(78%, 640px); margin-left:auto;
   background:var(--umber); padding:.7rem 1rem; border-radius:14px 14px 4px 14px; }
@@ -838,12 +848,12 @@ input::placeholder, textarea::placeholder{ color:#A39684 !important; }
 [data-testid="stChatInput"] > div, [data-testid="stChatInput"] textarea{ background:transparent !important; border:none !important; }
 
 /* ───────── Jawaban: teks Arab & sumber ───────── */
-.arab{ margin:1rem 0 .4rem; background:var(--paper-2); border:1px solid var(--rule); border-radius:var(--r); overflow:hidden; animation:rise .55s var(--ease) both; }
+.arab{ margin:1.4rem 0 1rem; background:var(--paper-2); border:1px solid var(--rule); border-radius:var(--r); overflow:hidden; }
 .arab-h{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.55rem 1rem; border-bottom:1px solid var(--rule-soft);
   font-size:.7rem; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600; }
 .arab-h [lang="ar"]{ letter-spacing:0; text-transform:none; font-size:.98rem; color:var(--brass-ink); font-weight:400; }
-.arab-t{ padding:1rem 1.25rem 1.15rem; font-family:var(--arab); font-size:1.5rem; line-height:2.15; color:var(--ink); text-align:right; }
-.id-box{ background:var(--paper-2); border:1px solid var(--rule); border-radius:var(--r); padding:1rem 1.25rem; line-height:1.75; color:var(--ink); animation:rise .55s var(--ease) both; }
+.arab-t{ padding:1.3rem 1.5rem 1.4rem; font-family:var(--arab); font-size:1.5rem; line-height:2.5; color:var(--ink); text-align:right; }
+.id-box{ background:var(--paper-2); border:1px solid var(--rule); border-radius:var(--r); padding:1rem 1.25rem; line-height:1.75; color:var(--ink); }
 .cites{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.8rem; }
 .cite{ display:inline-flex; align-items:center; gap:.45rem; font-size:.78rem; padding:.28rem .62rem; border:1px solid var(--rule); border-radius:6px;
   background:var(--paper-2); color:var(--ink-2) !important; text-decoration:none !important; transition:border-color .2s, color .2s; }
@@ -856,9 +866,9 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .snip a{ color:var(--ink) !important; }
 
 /* ───────── Pembaca materi ───────── */
-.doc{ max-height:72vh; overflow-y:auto; border-radius:var(--r); animation:fade .5s var(--ease); scrollbar-width:thin; scrollbar-color:var(--rule) transparent; }
-.doc p{ margin:.45rem 0; line-height:1.85; color:var(--ink-2); }
-.doc p[dir="rtl"]{ font-family:var(--arab); text-align:right; line-height:2.1; color:var(--ink); }
+.doc{ max-height:72vh; overflow-y:auto; border-radius:var(--r); scrollbar-width:thin; scrollbar-color:var(--rule) transparent; }
+.doc p{ margin:.6rem 0; line-height:1.95; color:var(--ink-2); }
+.doc p[dir="rtl"]{ font-family:var(--arab); text-align:right; line-height:2.4; color:var(--ink); margin:1.1rem 0; }
 .doc .doc-head{ text-align:center; padding:0 0 1.3rem; margin-bottom:1.3rem; border-bottom:1px solid var(--rule); }
 .doc .doc-head .mt{ font-family:var(--serif); font-size:1.6rem; color:var(--ink); line-height:1.25; }
 .doc .doc-head .mm{ font-size:.8rem; color:var(--muted); margin-top:.35rem; }
@@ -878,12 +888,13 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .hero{ padding:.4rem 0 3rem; }
 .hero-top{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; margin-bottom:1.2rem; }
 .hero-meta{ font-size:.82rem; color:var(--muted); }
-.hero-ar{ font-family:var(--arab); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:1.45; color:var(--ink); text-align:right; margin:0 0 1.2rem; }
+.hero-ar{ font-family:var(--arab); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:1.75; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.3rem 0; }
 .hero-grid{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:clamp(1.8rem, 5vw, 4.5rem); margin-top:2.2rem; align-items:start; }
 .hero-lead{ font-family:var(--serif); font-size:clamp(1.2rem, 2.2vw, 1.45rem); line-height:1.5; color:var(--ink); margin:0 0 1.8rem; max-width:34ch; }
 .hero-head{ display:flex; align-items:center; gap:clamp(1rem, 3vw, 2.6rem); margin:0 0 1.2rem; }
 .hero-head .hero-ar{ flex:1; min-width:0; margin:0; }
-.hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto; animation:logo-in 1s var(--ease) both; }
+.hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto; }
+.intro .hero-logo{ animation:logo-in 1s var(--ease) both; }
 /* tepi video dibuat lembut agar menyatu dengan latar halaman */
 .hero-logo, .splash-logo{ -webkit-mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%);
   mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%); }
@@ -894,7 +905,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
   background:var(--paper); pointer-events:none; animation:splash-out .8s var(--ease) var(--t, 3.5s) forwards; }
 .splash-logo{ width:min(56vw, 340px); height:auto; animation:logo-in 1s var(--ease) both; }
 .splash-nama{ font-family:var(--serif); font-size:1.05rem; letter-spacing:.32em; color:var(--ink-2); animation:logo-in 1s var(--ease) .35s both; }
-.splash-nama span{ font-family:var(--arab); letter-spacing:0; font-size:1.4rem; margin-left:.6rem; }
+.splash-nama span{ font-family:var(--arab); letter-spacing:0; font-size:1.4rem; margin-left:.9rem; }
 @keyframes splash-out{ to{ opacity:0; visibility:hidden; } }
 .hero-cta{ display:flex; flex-wrap:wrap; align-items:center; gap:.6rem 1.4rem; }
 .stats{ display:flex; flex-wrap:wrap; gap:1.2rem 2.6rem; margin:2.4rem 0 0; padding-top:1.3rem; border-top:1px solid var(--rule-soft); }
@@ -909,16 +920,14 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .btn-ghost{ display:inline-flex; align-items:center; gap:.45rem; min-height:2.9rem; color:var(--ink) !important; text-decoration:none !important; font-weight:500; }
 .btn-ghost .arr, .idx-go{ display:inline-block; transition:transform .3s var(--ease); }
 .btn-ghost:hover{ color:var(--brass-ink) !important; } .btn-ghost:hover .arr{ transform:translateX(5px); }
-.mosi{ position:relative; overflow:hidden; background:var(--paper-2); border:1px solid var(--rule); border-radius:14px; padding:1.6rem 1.6rem 1.4rem;
-  transition:transform .35s var(--ease), box-shadow .35s var(--ease); }
-.mosi:hover{ transform:translateY(-3px); box-shadow:0 22px 40px -30px rgba(43,31,21,.55); }
+.mosi{ position:relative; overflow:hidden; background:var(--paper-2); border:1px solid var(--rule); border-radius:14px; padding:1.6rem 1.6rem 1.4rem; }
 .mosi-top{ display:flex; justify-content:space-between; align-items:center; gap:1rem; }
 .mosi-no{ font-family:var(--serif); font-size:.9rem; color:var(--muted); }
-.mosi-ar{ font-family:var(--arab); font-size:1.55rem; line-height:1.95; color:var(--ink); text-align:right; margin:1.1rem 0 .7rem; position:relative; }
+.mosi-ar{ font-family:var(--arab); font-size:1.55rem; line-height:2.3; color:var(--ink); text-align:right; margin:1.4rem 0 1.1rem; position:relative; }
 .mosi-id{ color:var(--ink-2); line-height:1.65; margin:0; position:relative; }
 .tag{ display:inline-block; margin-top:1.1rem; font-size:.74rem; color:var(--ink-2); border:1px solid var(--rule); border-radius:999px; padding:.2rem .7rem; }
 .khatam{ position:absolute; right:-52px; bottom:-52px; width:180px; height:180px; opacity:.5; pointer-events:none; }
-.khatam path, .khatam circle{ fill:none; stroke:var(--brass); stroke-width:.8; stroke-dasharray:900; stroke-dashoffset:900; animation:stroke 2.6s var(--ease) .4s forwards; }
+.khatam path, .khatam circle{ fill:none; stroke:var(--brass); stroke-width:.8; }
 .sec{ padding:3.4rem 0 .5rem; }
 .sec-head{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-end; gap:.6rem 1rem; margin-bottom:1.3rem; }
 .sec-t{ font-family:var(--serif); font-size:clamp(1.6rem, 3vw, 2.15rem); color:var(--ink); letter-spacing:-.015em; line-height:1.15; margin-top:.4rem; }
@@ -935,22 +944,22 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .idx-n{ font-family:var(--serif); font-size:.95rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 .idx-t{ display:block; font-family:var(--serif); font-size:1.35rem; line-height:1.2; color:var(--ink); }
 .idx-d{ display:block; font-size:.86rem; line-height:1.55; color:var(--muted); margin-top:.3rem; max-width:60ch; }
-.idx-ar{ font-family:var(--arab); font-size:1.3rem; color:var(--brass-ink); white-space:nowrap; }
+.idx-ar{ font-family:var(--arab); font-size:1.3rem; line-height:2; color:var(--brass-ink); white-space:nowrap; padding:0 .8rem; }
 .idx-c{ font-size:.8rem; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
 .idx a:hover .idx-go{ transform:translateX(5px); color:var(--brass-ink); }
 .quote{ margin-top:3.6rem; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:clamp(1.4rem, 4vw, 3.5rem); align-items:center;
   padding:clamp(1.6rem, 4vw, 2.8rem); background:var(--paper-2); border:1px solid var(--rule); border-radius:14px; }
-.quote .q-ar{ font-family:var(--arab); font-size:clamp(1.6rem, 3vw, 2.2rem); line-height:1.9; color:var(--ink); text-align:right; }
+.quote .q-ar{ font-family:var(--arab); font-size:clamp(1.6rem, 3vw, 2.2rem); line-height:2.3; color:var(--ink); text-align:right; padding:.4rem 0; }
 .quote .q-id{ font-family:var(--serif); font-style:italic; font-size:1.2rem; line-height:1.55; color:var(--ink-2); margin:.8rem 0 0; }
 .steps{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1.8rem; position:relative; }
-.steps::before{ content:""; position:absolute; left:0; right:0; top:1.05rem; height:1px; background:var(--rule); transform-origin:left; animation:draw 1.4s var(--ease) .3s both; }
+.steps::before{ content:""; position:absolute; left:0; right:0; top:1.05rem; height:1px; background:var(--rule); }
 .steps li{ position:relative; margin:0; }
 .st-n{ width:2.1rem; height:2.1rem; border-radius:50%; display:grid; place-items:center; background:var(--paper); border:1px solid var(--ink);
   font-family:var(--serif); font-size:.95rem; color:var(--ink); position:relative; margin-bottom:1.1rem; transition:background-color .25s, color .25s; }
 .steps li:hover .st-n{ background:var(--ink); color:var(--paper); }
 .st-t{ font-family:var(--serif); font-size:1.18rem; color:var(--ink); }
 .st-d{ font-size:.88rem; color:var(--muted); line-height:1.6; margin-top:.35rem; }
-.st-a{ font-family:var(--arab); font-size:1.08rem; color:var(--brass-ink); margin-top:.55rem; }
+.st-a{ font-family:var(--arab); font-size:1.15rem; line-height:2.1; color:var(--brass-ink); margin-top:.9rem; }
 .band{ position:relative; overflow:hidden; margin-top:3.8rem; background:var(--umber); border-radius:16px; padding:clamp(1.7rem, 4vw, 2.7rem);
   display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1.4rem; }
 .band-t{ font-family:var(--serif); font-size:clamp(1.45rem, 3vw, 1.95rem); color:#F6EEDC; line-height:1.2; }
@@ -979,7 +988,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 /* ───────── Kaki halaman ───────── */
 .foot{ margin-top:4.5rem; padding-top:1.4rem; border-top:1px solid var(--rule); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline;
   gap:.6rem 1.5rem; font-size:.8rem; color:var(--muted); }
-.foot b{ font-family:var(--serif); font-weight:500; color:var(--ink); font-size:1rem; letter-spacing:.08em; margin-right:.6rem; }
+.foot b{ font-family:var(--serif); font-weight:500; color:var(--ink); font-size:1rem; letter-spacing:.08em; margin-right:.3rem; }
 
 /* ───────── Layar kecil ───────── */
 @media (max-width: 820px){
@@ -998,7 +1007,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 /* Hormati pengguna yang mematikan animasi */
 @media (prefers-reduced-motion: reduce){
   *, *::before, *::after{ animation:none !important; transition:none !important; }
-  .count{ --n:var(--to); } .khatam path, .khatam circle{ stroke-dashoffset:0; }
+  .count{ --n:var(--to); }
   .splash{ display:none !important; }
 }
 </style>
@@ -1009,11 +1018,32 @@ def esc(t: str) -> str:
     return html.escape(t or "")
 
 
+# Rangkaian teks Arab (boleh berisi spasi / tanda baca di antara kata Arab)
+_AR_HURUF = r"\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF"
+AR_RUN = re.compile(rf"[{_AR_HURUF}]+(?:[\s.,:;!?()«»\-–]+[{_AR_HURUF}]+)*")
+
+
+def bungkus_arab(t: str) -> str:
+    """Bungkus teks Arab di tengah kalimat dengan <span class='ar-in'> agar berjarak & tidak menempel."""
+    return AR_RUN.sub(lambda m: f"<span class='ar-in' lang='ar' dir='rtl'>{m.group(0)}</span>", t or "")
+
+
+def md_arab(t: str) -> str:
+    """Untuk teks markdown (jawaban AI): amankan tag HTML, lalu beri jarak pada teks Arab."""
+    t = (t or "").replace("&", "&amp;").replace("<", "&lt;")
+    return bungkus_arab(t)
+
+
 def fmt_inline(t: str) -> str:
     """Escape HTML lalu dukung **tebal** dan baris baru."""
     t = esc(t.strip())
     t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
     return t.replace("\n", "<br>")
+
+
+def fmt_campur(t: str) -> str:
+    """Seperti fmt_inline, tetapi teks Arab di tengah kalimat diberi jarak."""
+    return bungkus_arab(fmt_inline(t))
 
 
 def page_header(title: str, arabic: str = "", desc: str = "", eyebrow: str = ""):
@@ -1039,7 +1069,7 @@ def render_answer(parsed: dict, hits=None, web=None):
     arab = parsed.get("ARAB", "").strip()
     sumber = parsed.get("SUMBER", "").strip()
     if jawaban:
-        st.markdown(jawaban)
+        st.markdown(md_arab(jawaban), unsafe_allow_html=True)
     if arab and arab != "-":
         kotak_arab(fmt_inline(arab))
         with st.expander("Salin teks Arab"):
@@ -1062,7 +1092,7 @@ def render_answer(parsed: dict, hits=None, web=None):
                 domain = urllib.parse.urlparse(w["url"]).netloc.replace("www.", "")
                 st.markdown(
                     f"<div class='snip'><div class='h'><b>{esc(domain)}</b> · <a href='{esc(w['url'])}' target='_blank' rel='noopener'>"
-                    f"{esc(w['title'] or w['url'])}</a></div><div dir='auto'>{esc(w['content'][:400])}…</div></div>",
+                    f"{esc(w['title'] or w['url'])}</a></div><div dir='auto'>{bungkus_arab(esc(w['content'][:400]))}…</div></div>",
                     unsafe_allow_html=True,
                 )
     if hits:
@@ -1070,7 +1100,7 @@ def render_answer(parsed: dict, hits=None, web=None):
             for h in hits:
                 st.markdown(
                     f"<div class='snip'><div class='h'><b>{esc(CATEGORIES[h['cat']]['label'])}</b> › {esc(h.get('sub', ''))} · "
-                    f"{esc(h['source'])} · skor {h['score']:.2f}</div><div dir='auto'>{fmt_inline(h['text'][:700])}</div></div>",
+                    f"{esc(h['source'])} · skor {h['score']:.2f}</div><div dir='auto'>{fmt_campur(h['text'][:700])}</div></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -1104,9 +1134,9 @@ def render_doc(text: str, query: str = "", kitab: bool = True, ukuran: int = 26)
         elif re.match(r"^(Muqaddimah \d+|Mosi \d+|Bagian \d+|\d+\.$)", p):
             html_paras.append(f"<p class='sub'>{content}</p>")
         elif p.startswith(("“", '"', "Arti:", "Terjemah")):
-            html_paras.append(f"<p class='tr' dir='auto'>{content}</p>")
+            html_paras.append(f"<p class='tr' dir='auto'>{bungkus_arab(content)}</p>")
         else:
-            html_paras.append(f"<p dir='auto'>{content}</p>")
+            html_paras.append(f"<p dir='auto'>{bungkus_arab(content)}</p>")
     kelas = "doc kitab" if kitab else "doc malam"
     st.markdown(f"<div class='{kelas}'>{head}{''.join(html_paras)}</div>", unsafe_allow_html=True)
     if len(body) > limit:
@@ -1168,6 +1198,12 @@ def pilih_materi(key: str, i: int):
 def page_home(kb):
     docs = kb["docs"]
     mosi, ibr = mosi_harian(kb), ibarah_harian(kb)
+    # Animasi pembuka hanya saat Beranda pertama kali dibuka; kunjungan berikutnya tampil diam.
+    intro = not st.session_state.get("beranda_dilihat")
+    st.session_state["beranda_dilihat"] = True
+
+    def angka(n: int) -> str:
+        return f"<span class='count' style='--to:{n}'></span>" if intro else str(n)
 
     kartu_mosi = ""
     if mosi:
@@ -1178,7 +1214,7 @@ def page_home(kb):
             f"<p class='mosi-id'>{esc(mosi[2])}</p><span class='tag'>Tema · {esc(mosi[0])}</span></aside>"
         )
     st.markdown(
-        "<section class='hero'>"
+        f"<section class='hero{' intro' if intro else ''}'>"
         "<div class='hero-top reveal'><span class='eyebrow'>Panduan debat bahasa Arab</span>"
         "<span class='hero-meta'>Format Qatar Debate · untuk pelajar, santri, dan mahasiswa</span></div>"
         f"<div class='hero-head'>{video_logo('hero-logo')}"
@@ -1190,9 +1226,9 @@ def page_home(kb):
         "<div class='hero-cta reveal' style='--i:3'><a class='btn' href='sistem_debat' target='_self'>Mulai belajar</a>"
         "<a class='btn-ghost' href='chat' target='_self'>Tanya MUNAZIR <span class='arr'>→</span></a></div>"
         "<dl class='stats reveal' style='--i:4'>"
-        f"<div><dt>Materi</dt><dd><span class='count' style='--to:{len(docs)}'></span></dd></div>"
-        f"<div><dt>Bagian</dt><dd><span class='count' style='--to:{len(CATEGORIES)}'></span></dd></div>"
-        f"<div><dt>Situs rujukan</dt><dd><span class='count' style='--to:{len(TRUSTED_DOMAINS)}'></span></dd></div>"
+        f"<div><dt>Materi</dt><dd>{angka(len(docs))}</dd></div>"
+        f"<div><dt>Bagian</dt><dd>{angka(len(CATEGORIES))}</dd></div>"
+        f"<div><dt>Situs rujukan</dt><dd>{angka(len(TRUSTED_DOMAINS))}</dd></div>"
         "</dl></div>"
         f"{kartu_mosi}</div></section>",
         unsafe_allow_html=True,
@@ -1295,8 +1331,9 @@ def page_chat():
     if not history:
         with st.chat_message("assistant", avatar=AVATAR_AI):
             st.markdown(
-                "**السَّلَامُ عَلَيْكُمْ** — saya **MUNAZIR**, asisten debat bahasa Arab Anda. "
-                "Silakan tanya tentang sistem debat, mosi, ibarah, kosakata, atau muqaddimah."
+                "<b><span class='ar-in' lang='ar' dir='rtl'>السَّلَامُ عَلَيْكُمْ</span></b> — saya **MUNAZIR**, "
+                "asisten debat bahasa Arab Anda. Silakan tanya tentang sistem debat, mosi, ibarah, kosakata, atau muqaddimah.",
+                unsafe_allow_html=True,
             )
         st.markdown("<div class='subhead'>Coba tanyakan</div>", unsafe_allow_html=True)
         with st.container(key="contoh_chat"):
@@ -1337,7 +1374,7 @@ def page_chat():
 def tab_cari_kata(kb):
     """Cari arti kata di kamus online terpercaya + di materi Kamus Debat MUNAZIR."""
     st.markdown("Ketik kata atau istilah dalam bahasa **Arab, Indonesia, atau Inggris**, lalu buka di kamus pilihan.")
-    kata = st.text_input("Kata yang dicari", key="cari_kata", placeholder="contoh: مناظرة, kebebasan berekspresi, democracy")
+    kata = st.text_input("Kata yang dicari", key="cari_kata", placeholder="contoh: مُنَاظَرَةٌ, kebebasan berekspresi, democracy")
     k = kata.strip()
     if not k:
         return
@@ -1354,7 +1391,7 @@ def tab_cari_kata(kb):
     for h in hits:
         st.markdown(
             f"<div class='snip'><div class='h'><b>{esc(h['sub'])}</b> › {esc(h['source'])}</div>"
-            f"<div dir='auto'>{highlight(h['text'][:600], k).replace(chr(10), '<br>')}</div></div>",
+            f"<div dir='auto'>{bungkus_arab(highlight(h['text'][:600], k)).replace(chr(10), '<br>')}</div></div>",
             unsafe_allow_html=True,
         )
 
@@ -1404,7 +1441,7 @@ def page_category(cat: str, kb):
             render_doc(shown[pick]["text"], kitab=(mode == "Kertas"), ukuran=ukuran)
 
     with t2:
-        q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حجة, POI …")
+        q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, POI …")
         if q:
             hits = search(kb, q, k=10, cats=[cat], min_score=0.02)
             if not hits:
@@ -1412,7 +1449,7 @@ def page_category(cat: str, kb):
             for h in hits:
                 st.markdown(
                     f"<div class='snip'><div class='h'><b>{esc(h['sub'])}</b> › {esc(h['source'])} · relevansi {h['score']:.2f}</div>"
-                    f"<div dir='auto'>{highlight(h['text'], q).replace(chr(10), '<br>')}</div></div>",
+                    f"<div dir='auto'>{bungkus_arab(highlight(h['text'], q)).replace(chr(10), '<br>')}</div></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -1440,7 +1477,7 @@ def page_translate(kb):
     c1, c2, c3 = st.columns([1.3, 1, 1])
     direction = c1.selectbox("Arah terjemahan", ["Otomatis", "Indonesia → Arab", "Arab → Indonesia"])
     style = c2.selectbox("Gaya bahasa", ["Formal debat", "Umum"])
-    harakat = c3.checkbox("Beri harakat (Arab)", value=False)
+    harakat = c3.checkbox("Beri harakat (Arab)", value=True)
     use_kb = st.checkbox("Gunakan istilah dari basis pengetahuan (glosarium)", value=True)
     text = st.text_area("Teks yang ingin diterjemahkan:", height=160, key="tr_text")
 
@@ -1471,12 +1508,12 @@ def page_translate(kb):
         if is_mostly_arabic(tr):
             kotak_arab(fmt_inline(tr), "Hasil terjemahan", "التَّرْجَمَةُ")
         else:
-            st.markdown(f"<div class='id-box'><div class='eyebrow'>Hasil terjemahan</div>{fmt_inline(tr)}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='id-box'><div class='eyebrow'>Hasil terjemahan</div>{fmt_campur(tr)}</div>", unsafe_allow_html=True)
         st.code(tr, language=None)
         note = res.get("CATATAN", "").strip()
         if note and note != "-":
             with st.expander("Catatan istilah"):
-                st.markdown(note)
+                st.markdown(md_arab(note), unsafe_allow_html=True)
 
 
 TIMER_HTML = """<!doctype html><html><head><meta charset="utf-8">
@@ -1485,14 +1522,13 @@ TIMER_HTML = """<!doctype html><html><head><meta charset="utf-8">
 :root{--paper:#F3EDE1;--paper2:#FAF7F0;--ink:#1F1A14;--ink2:#463D33;--muted:#766A5C;--rule:#DBD1C0;--umber:#2B1F15;--cream:#F3E9D2;--brass:#C9A04E;--poi:#7FA58A;--stop:#D46A5A;--pro:#4E6B58;--kon:#9B4E3A}
 *{box-sizing:border-box}
 body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:transparent;-webkit-font-smoothing:antialiased}
-.wrap{display:flex;flex-wrap:wrap;gap:20px;animation:rise .6s cubic-bezier(.2,.7,.2,1) both}
-@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.wrap{display:flex;flex-wrap:wrap;gap:20px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .main{flex:999 1 420px;min-width:0;padding:28px 22px 26px;border-radius:16px;background:var(--umber);color:var(--cream);display:flex;flex-direction:column;align-items:center;gap:16px}
 .side{flex:1 1 260px;padding:18px 14px;border-radius:16px;background:var(--paper2);border:1px solid var(--rule);display:flex;flex-direction:column;gap:6px}
 .tim{font-size:11px;letter-spacing:.16em;font-weight:600;text-align:center;text-transform:uppercase}
 .nama{font-family:'Newsreader',Georgia,serif;font-size:26px;color:#F6EEDC;text-align:center;margin-top:4px}
-.ar{font-family:'Amiri',serif;font-size:20px;color:#D9BD7E;text-align:center}
+.ar{font-family:'Amiri',serif;font-size:21px;line-height:2;color:#D9BD7E;text-align:center;margin-top:8px}
 .ring{position:relative;width:260px;height:260px}
 .ring svg{display:block}
 #arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
@@ -1777,7 +1813,7 @@ def main():
     st.navigation(menu, position="top").run()
 
     st.markdown(
-        f"<footer class='foot'><span><b>MUNAZIR</b><span lang='ar'>مُنَاظِر</span> · Panduan debat bahasa Arab</span>"
+        f"<footer class='foot'><span><b>MUNAZIR</b><span class='ar-in' lang='ar'>مُنَاظِر</span> · Panduan debat bahasa Arab</span>"
         f"<span>Dikembangkan oleh {esc(PROFIL['nama'])}</span></footer>",
         unsafe_allow_html=True,
     )
