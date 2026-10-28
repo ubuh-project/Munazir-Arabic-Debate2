@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 MUNAZIR (مُنَاظِرٌ) — Panduan & Pedoman Debat Bahasa Arab
-Streamlit + Groq AI + basis pengetahuan dari file yang diunggah.
+Streamlit + Groq AI + basis pengetahuan HANYA dari file materi yang diunggah (tanpa sumber internet).
 
 Cara menjalankan lokal:  streamlit run app.py
 API key dibaca dari  st.secrets["GROQ_API_KEY"]  (JANGAN ditulis di kode).
@@ -13,7 +13,6 @@ import json
 import html
 import difflib
 import hashlib
-import urllib.parse
 from pathlib import Path
 
 import numpy as np
@@ -113,21 +112,6 @@ IKON_MENU = {
     "kosakata": ":material/menu_book:",
     "muqaddimah": ":material/record_voice_over:",
 }
-
-# ── SITUS TERPERCAYA untuk pencarian internet AI (boleh ditambah/dikurangi) ──
-# Gratis tanpa API key: DuckDuckGo (pustaka ddgs) + cadangan Wikipedia.
-# Opsional: isi TAVILY_API_KEY di Secrets Streamlit agar memakai Tavily (lebih rapi).
-TRUSTED_DOMAINS = [
-    # Debat
-    "qatardebate.org",
-    # Bahasa & kamus Arab
-    "almaany.com", "dohadictionary.org", "ksaa.gov.sa", "unterm.un.org", "arabdict.com",
-    "ar.wikipedia.org", "ar.wiktionary.org",
-    # Jurnal ilmiah
-    "garuda.kemdiktisaintek.go.id", "ejournal.uin-suka.ac.id", "journal.uinjkt.ac.id", "doaj.org",
-    # Wawasan isu mosi
-    "un.org", "id.wikipedia.org", "bbc.com", "aljazeera.net",
-]
 
 # Link Google Form untuk menu Respon (tempel link form Anda di antara tanda kutip)
 FORM_URL = "https://forms.gle/rwseAxjWB6oexi3m9"
@@ -410,148 +394,6 @@ def get_api_key() -> str:
     return _secret("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY", "") or st.session_state.get("user_api_key", "")
 
 
-def get_tavily_key() -> str:
-    return _secret("TAVILY_API_KEY") or os.environ.get("TAVILY_API_KEY", "")
-
-
-def _domain_terpercaya(url: str) -> str:
-    """Kembalikan domain terpercaya yang cocok dengan url, atau "" bila tidak cocok."""
-    host = urllib.parse.urlparse(url).netloc.lower().split(":")[0]
-    if host.startswith("www."):
-        host = host[4:]
-    for d in TRUSTED_DOMAINS:
-        if host == d or host.endswith("." + d):
-            return d
-    return ""
-
-
-def _gabung_hasil(*daftar, batas: int = 5):
-    """Gabungkan beberapa daftar hasil, buang yang dobel atau bukan situs terpercaya."""
-    hasil, sudah = [], set()
-    for kumpulan in daftar:
-        for r in kumpulan or []:
-            url = r.get("url", "")
-            if not url or url in sudah or not _domain_terpercaya(url):
-                continue
-            sudah.add(url)
-            hasil.append(r)
-            if len(hasil) >= batas:
-                return hasil
-    return hasil
-
-
-# 1) TAVILY (opsional, hanya jika TAVILY_API_KEY diisi) ------------------------
-@st.cache_data(ttl=86400, show_spinner=False)
-def _tavily_search(query: str, _api_key: str):
-    import requests
-
-    resp = requests.post(
-        "https://api.tavily.com/search",
-        headers={"Authorization": f"Bearer {_api_key}", "Content-Type": "application/json"},
-        json={"query": query[:380], "search_depth": "basic", "max_results": 5, "include_domains": TRUSTED_DOMAINS},
-        timeout=20,
-    )
-    resp.raise_for_status()
-    return [
-        {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", "")}
-        for r in resp.json().get("results", [])
-        if r.get("url")
-    ]
-
-
-# 2) DUCKDUCKGO (gratis, tanpa API key) ----------------------------------------
-def _ddg_satu(query: str, max_results: int = 10):
-    try:
-        from ddgs import DDGS
-    except ImportError:  # nama pustaka versi lama
-        from duckduckgo_search import DDGS
-    hasil = DDGS().text(query, safesearch="moderate", max_results=max_results) or []
-    return [
-        {"title": r.get("title", ""), "url": r.get("href", "") or r.get("url", ""), "content": r.get("body", "")}
-        for r in hasil
-    ]
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def _ddg_search(query: str):
-    """Cari di DuckDuckGo, lalu ambil hanya hasil dari TRUSTED_DOMAINS."""
-    q = query[:300]
-    # a) cari umum, saring ke situs terpercaya
-    hasil = _gabung_hasil(_ddg_satu(q, 25))
-    # b) kalau masih sedikit, cari khusus di beberapa situs terpercaya (site:)
-    for kelompok in (TRUSTED_DOMAINS[:6], TRUSTED_DOMAINS[6:12]):
-        if len(hasil) >= 3:
-            break
-        filter_situs = " OR ".join(f"site:{d}" for d in kelompok)
-        hasil = _gabung_hasil(hasil, _ddg_satu(f"{q} ({filter_situs})", 10))
-    return hasil
-
-
-# 3) WIKIPEDIA (gratis, resmi, cadangan bila DuckDuckGo gagal) ------------------
-@st.cache_data(ttl=86400, show_spinner=False)
-def _wikipedia_search(query: str):
-    import requests
-
-    ada_arab = bool(re.search(r"[\u0600-\u06FF]", query))
-    bahasa = ["ar", "id"] if ada_arab else ["id", "ar"]
-    hasil = []
-    for lang in bahasa:
-        if f"{lang}.wikipedia.org" not in TRUSTED_DOMAINS:
-            continue
-        resp = requests.get(
-            f"https://{lang}.wikipedia.org/w/api.php",
-            params={
-                "action": "query", "format": "json", "generator": "search",
-                "gsrsearch": query[:250], "gsrlimit": 3,
-                "prop": "extracts|info", "exintro": 1, "explaintext": 1, "exchars": 1200, "inprop": "url",
-            },
-            headers={"User-Agent": "MUNAZIR-Arabic-Debate/1.0 (Streamlit app; edukasi)"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        halaman = (resp.json().get("query") or {}).get("pages") or {}
-        for pg in sorted(halaman.values(), key=lambda x: x.get("index", 99)):
-            if pg.get("fullurl") and pg.get("extract"):
-                hasil.append({"title": pg.get("title", ""), "url": pg["fullurl"], "content": pg["extract"]})
-    return hasil[:5]
-
-
-def web_search(query: str):
-    """Tavily (jika ada key) → DuckDuckGo → Wikipedia. Selalu aman: gagal = []."""
-    query = query.strip()
-    if not query:
-        return []
-    st.session_state.pop("web_error", None)
-    st.session_state.pop("web_engine", None)
-    galat = []
-    sumber = []
-    key = get_tavily_key()
-    if key:
-        sumber.append(("Tavily", lambda: _tavily_search(query, key)))
-    sumber.append(("DuckDuckGo", lambda: _ddg_search(query)))
-    sumber.append(("Wikipedia", lambda: _wikipedia_search(query)))
-
-    hasil, dipakai = [], []
-    for nama, cari in sumber:
-        try:
-            baru = cari()
-        except Exception as e:  # kuota habis / diblokir sementara / jaringan → coba berikutnya
-            galat.append(f"{nama}: {e}")
-            continue
-        if baru:
-            sebelum = len(hasil)
-            hasil = _gabung_hasil(hasil, baru)
-            if len(hasil) > sebelum:
-                dipakai.append(nama)
-        if len(hasil) >= 3:
-            break
-    if dipakai:
-        st.session_state["web_engine"] = " + ".join(dipakai)
-    elif galat:
-        st.session_state["web_error"] = "; ".join(galat)
-    return hasil
-
-
 @st.cache_resource(show_spinner=False)
 def get_client(api_key: str):
     from groq import Groq
@@ -609,29 +451,26 @@ def call_llm(messages, temperature: float = 0.3, max_tokens: int = 1800) -> str:
 
 
 SYSTEM_CHAT = """Kamu adalah MUNAZIR (مُنَاظِرٌ), asisten AI panduan dan pedoman debat bahasa Arab (munazarah).
-Tugasmu membantu pengguna menemukan materi dari BASIS PENGETAHUAN: sistem debat, mosi, ibarah, kosa kata, dan muqaddimah.
-KONTEKS berisi dua jenis sumber: [Materi …] = materi resmi MUNAZIR, dan [Internet …] = hasil pencarian dari situs terpercaya.
+Tugasmu membantu pengguna menemukan materi dari BASIS PENGETAHUAN MUNAZIR: sistem debat, mosi, ibarah, kosa kata, dan muqaddimah.
+KONTEKS berisi potongan [Materi …] dari file materi resmi MUNAZIR. Itulah SATU-SATUNYA sumber yang boleh kamu pakai.
 
 ATURAN:
-1. Jawab HANYA berdasarkan KONTEKS yang diberikan. Jangan mengarang materi yang tidak ada di konteks.
-   UTAMAKAN [Materi …]. Pakai [Internet …] sebagai pelengkap, atau bila materi MUNAZIR tidak memuat jawabannya.
-   Jika memakai sumber internet, sebutkan dengan jelas di penjelasan (misal: "Menurut situs QatarDebate, …").
-2. Jika konteks tidak memuat jawabannya, katakan dengan sopan bahwa materi tersebut belum tersedia
-   dan sarankan pengguna mengunggah file materi yang relevan. Untuk salam/sapaan, balas singkat dan ramah.
+1. Jawab HANYA berdasarkan KONTEKS [Materi …]. Jangan memakai pengetahuanmu sendiri, internet, atau sumber lain,
+   dan jangan mengarang materi yang tidak ada di konteks.
+2. Jika konteks tidak memuat jawabannya, katakan dengan sopan bahwa materi tersebut belum tersedia di MUNAZIR.
+   Untuk salam/sapaan, balas singkat dan ramah.
 3. Penjelasan ditulis dalam bahasa Indonesia yang jelas dan rapi (boleh memakai poin-poin).
 4. Bagian ARAB berisi kutipan teks Arab dari konteks yang relevan dengan jawaban. Jangan mengubah kata-katanya,
    tetapi WAJIB lengkapi dengan harakat (syakal) penuh dan benar pada setiap huruf, termasuk harakat akhir (i'rab).
-   Jika konteks tidak memuat teks Arab yang relevan, tulis terjemahan Arab fusha dari jawabanmu dengan harakat
-   lengkap dan awali dengan "(تَرْجَمَةٌ)".
-5. Bagian SUMBER berisi nama file (untuk [Materi …]) dan URL lengkap (untuk [Internet …]) yang benar-benar dipakai,
-   dipisahkan koma. Tulis "-" jika tidak ada.
+   Jika konteks tidak memuat teks Arab yang relevan, tulis "-".
+5. Bagian SUMBER berisi nama file materi yang benar-benar dipakai, dipisahkan koma. Tulis "-" jika tidak ada.
 6. Setiap kata atau istilah Arab yang muncul di bagian JAWABAN juga WAJIB diberi harakat lengkap.
 
 FORMAT WAJIB (gunakan penanda persis seperti ini):
 [JAWABAN]
 ...penjelasan bahasa Indonesia...
 [ARAB]
-...teks Arab dari sumber...
+...teks Arab dari materi...
 [SUMBER]
 ...nama file..."""
 
@@ -668,7 +507,7 @@ def expand_query(question: str) -> str:
         return ""
 
 
-def build_context(chunks, limit_chars: int = 6000, web=None, web_chars: int = 3500) -> str:
+def build_context(chunks, limit_chars: int = 6000) -> str:
     out, total = [], 0
     for i, c in enumerate(chunks, 1):
         block = f"[Materi {i}: {c['source']} | Menu: {CATEGORIES[c['cat']]['label']}]\n{c['text']}"
@@ -676,22 +515,15 @@ def build_context(chunks, limit_chars: int = 6000, web=None, web_chars: int = 35
             break
         out.append(block)
         total += len(block)
-    total = 0
-    for j, w in enumerate(web or [], 1):
-        block = f"[Internet {j}: {w['title']} | {w['url']}]\n{w['content'][:1200]}"
-        if total + len(block) > web_chars:
-            break
-        out.append(block)
-        total += len(block)
     return "\n\n---\n\n".join(out)
 
 
-def answer_question(question: str, cats=None, history=None, use_web: bool = False):
+def answer_question(question: str, cats=None, history=None):
+    """Jawab pertanyaan HANYA dari materi MUNAZIR (tanpa pencarian internet)."""
     kb = get_kb()
     expansion = expand_query(question) if kb["chunks"] else ""
     hits = search(kb, f"{question}\n{expansion}", k=6, cats=cats)
-    web = web_search(f"{question} {expansion}") if use_web else []
-    context = build_context(hits, web=web) if (hits or web) else "(tidak ada materi yang cocok di basis pengetahuan)"
+    context = build_context(hits) if hits else "(tidak ada materi yang cocok di basis pengetahuan)"
     messages = [{"role": "system", "content": SYSTEM_CHAT}]
     for h in (history or [])[-4:]:
         if h["role"] == "user":
@@ -702,9 +534,9 @@ def answer_question(question: str, cats=None, history=None, use_web: bool = Fals
     raw = call_llm(messages)
     parsed = lengkapi_harakat(
         parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")),
-        ekstra=[h["text"] for h in hits] + [w["content"][:400] for w in web],
+        ekstra=[h["text"] for h in hits],
     )
-    return raw, parsed, hits, web
+    return raw, parsed, hits
 
 
 def parse_sections(raw: str, tags):
@@ -998,7 +830,7 @@ def harakati(text: str, maks_panggilan: int = 2) -> str:
 
 
 def harakati_banyak(texts, maks_panggilan: int = 4):
-    """Beri harakat untuk beberapa teks sekaligus (cuplikan hasil cari, kamus, dll)."""
+    """Beri harakat untuk beberapa teks sekaligus (cuplikan hasil cari, dll)."""
     items = []
     for t in texts:
         items += kumpulkan_arab(t)
@@ -1131,7 +963,7 @@ mark{ background:rgba(165,122,44,.22); color:inherit; padding:0 .1em; border-rad
   border:none !important; color:var(--ink-2) !important; justify-content:flex-start !important; text-align:left !important; }
 [class*="st-key-toc_"] .stButton button:hover{ color:var(--brass-ink) !important; transform:translateX(4px); box-shadow:none !important; }
 [class*="st-key-toc_"] .stButton button p{ font-weight:400 !important; text-align:left; }
-/* tombol tautan (kamus online, formulir) */
+/* tombol tautan (formulir) */
 [data-testid="stLinkButton"] a, a[data-testid^="stBaseLinkButton"]{ background:var(--paper-2) !important; border:1px solid var(--rule) !important;
   border-radius:8px !important; color:var(--ink) !important; transition:border-color .2s, transform .15s var(--ease) !important; }
 [data-testid="stLinkButton"] a:hover, a[data-testid^="stBaseLinkButton"]:hover{ border-color:var(--brass) !important; transform:translateY(-1px); }
@@ -1190,12 +1022,10 @@ input::placeholder, textarea::placeholder{ color:#A39684 !important; }
 .cite{ display:inline-flex; align-items:center; gap:.45rem; font-size:.78rem; padding:.28rem .62rem; border:1px solid var(--rule); border-radius:6px;
   background:var(--paper-2); color:var(--ink-2) !important; text-decoration:none !important; transition:border-color .2s, color .2s; }
 .cite b{ font-weight:600; color:var(--muted); font-size:.64rem; letter-spacing:.1em; text-transform:uppercase; }
-a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .snip{ padding:.8rem 0; border-bottom:1px solid var(--rule-soft); font-size:.92rem; color:var(--ink-2); line-height:1.65; }
 .snip:last-child{ border-bottom:none; }
 .snip .h{ font-size:.76rem; color:var(--muted); margin-bottom:.3rem; }
 .snip .h b{ color:var(--brass-ink); font-weight:600; }
-.snip a{ color:var(--ink) !important; }
 
 /* ───────── Pembaca materi ───────── */
 .doc{ max-height:72vh; overflow-y:auto; border-radius:var(--r); scrollbar-width:thin; scrollbar-color:var(--rule) transparent; }
@@ -1417,7 +1247,7 @@ def kotak_arab(isi_html: str, label: str = "Teks Arab dari sumber", label_ar: st
     )
 
 
-def render_answer(parsed: dict, hits=None, web=None):
+def render_answer(parsed: dict, hits=None):
     jawaban = parsed.get("JAWABAN", "").strip()
     arab = parsed.get("ARAB", "").strip()
     sumber = parsed.get("SUMBER", "").strip()
@@ -1429,25 +1259,12 @@ def render_answer(parsed: dict, hits=None, web=None):
             st.code(arab, language=None)
     if sumber and sumber != "-":
         chips = ""
-        for s in re.split(r"[,;\n]|\s+(?=https?://)", sumber):
-            s = s.strip().strip("()[]<>")
-            if not s:
-                continue
-            if s.startswith("http"):
-                domain = urllib.parse.urlparse(s).netloc.replace("www.", "")
-                chips += f"<a class='cite' href='{esc(s)}' target='_blank' rel='noopener'><b>Web</b>{esc(domain)} ↗</a>"
-            else:
-                chips += f"<span class='cite'><b>Materi</b>{esc(s)}</span>"
-        st.markdown(f"<div class='cites'>{chips}</div>", unsafe_allow_html=True)
-    if web:
-        with st.expander(f"Sumber internet yang dibaca · {len(web)}"):
-            for w in web:
-                domain = urllib.parse.urlparse(w["url"]).netloc.replace("www.", "")
-                st.markdown(
-                    f"<div class='snip'><div class='h'><b>{esc(domain)}</b> · <a href='{esc(w['url'])}' target='_blank' rel='noopener'>"
-                    f"{esc(w['title'] or w['url'])}</a></div><div dir='auto'>{bungkus_arab(esc(terapkan_harakat(w['content'][:400])))}…</div></div>",
-                    unsafe_allow_html=True,
-                )
+        for nama in re.split(r"[,;\n]", sumber):
+            nama = nama.strip().strip("()[]<>")
+            if nama and not nama.startswith("http"):
+                chips += f"<span class='cite'><b>Materi</b>{esc(nama)}</span>"
+        if chips:
+            st.markdown(f"<div class='cites'>{chips}</div>", unsafe_allow_html=True)
     if hits:
         with st.expander(f"Cuplikan materi yang dipakai · {len(hits)}"):
             for h in hits:
@@ -1721,13 +1538,12 @@ def page_home(kb):
         "<div class='rule-draw'></div>"
         "<div class='hero-grid'><div>"
         "<p class='hero-lead reveal' style='--i:2'>Belajar debat bahasa Arab dari dasar: sistem, mosi, ibarah, kamus, dan muqaddimah. "
-        "Asisten MUNAZIR menjawab dari materi, lengkap dengan teks Arab dan sumbernya.</p>"
+        "Asisten MUNAZIR menjawab hanya dari materi, lengkap dengan teks Arab dan sumbernya.</p>"
         "<div class='hero-cta reveal' style='--i:3'><a class='btn' href='sistem_debat' target='_self'>Mulai belajar</a>"
         "<a class='btn-ghost' href='chat' target='_self'>Tanya MUNAZIR <span class='arr'>→</span></a></div>"
         "<dl class='stats reveal' style='--i:4'>"
         f"<div><dt>Materi</dt><dd>{angka(len(docs))}</dd></div>"
         f"<div><dt>Bagian</dt><dd>{angka(len(CATEGORIES))}</dd></div>"
-        f"<div><dt>Situs rujukan</dt><dd>{angka(len(TRUSTED_DOMAINS))}</dd></div>"
         "</dl></div>"
         f"{kartu_mosi}</div></section>",
         unsafe_allow_html=True,
@@ -1794,26 +1610,13 @@ def cek_api_key():
         st.text_input("Groq API key (sementara)", type="password", key="user_api_key")
 
 
-def pilihan_internet() -> bool:
-    """Saklar pencarian internet + daftar situs terpercaya. Mengembalikan True bila aktif."""
-    aktif = st.toggle("Sertakan sumber internet tepercaya", value=True, key="pakai_web")
-    with st.expander(f"Daftar situs rujukan · {len(TRUSTED_DOMAINS)}"):
-        st.markdown("<div class='cites'>" + "".join(f"<span class='cite'>{esc(d)}</span>" for d in TRUSTED_DOMAINS) + "</div>",
-                    unsafe_allow_html=True)
-    if st.session_state.get("web_error"):
-        st.caption("Pencarian internet sedang tidak tersedia (gangguan atau terlalu banyak permintaan). Jawaban memakai materi MUNAZIR saja.")
-    elif st.session_state.get("web_engine"):
-        st.caption(f"Pencarian terakhir memakai: {st.session_state['web_engine']}")
-    return aktif
-
-
 AVATAR_AI = ":material/menu_book:"
 AVATAR_USER = ":material/person:"
 
 
 def page_chat():
     page_header("Chat MUNAZIR", "حِوَارٌ مَعَ مُنَاظِرٍ",
-                "Tanyakan apa saja seputar materi debat. Jawaban dalam bahasa Indonesia, disertai teks Arab dari sumber.", "Asisten")
+                "Tanyakan apa saja seputar materi debat. Jawaban hanya dari materi MUNAZIR, disertai teks Arab dan nama file sumbernya.", "Asisten")
     cek_api_key()
     history = st.session_state.setdefault("chat", [])
     if history:
@@ -1825,7 +1628,6 @@ def page_chat():
     scope_labels = ["Semua menu"] + [v["label"] for v in CATEGORIES.values()]
     scope = st.selectbox("Cari di menu:", scope_labels, key="chat_scope")
     cats = None if scope == "Semua menu" else [k for k, v in CATEGORIES.items() if v["label"] == scope]
-    use_web = pilihan_internet()
 
     if not history:
         with st.chat_message("assistant", avatar=AVATAR_AI):
@@ -1850,7 +1652,7 @@ def page_chat():
             elif m.get("error"):
                 st.error(m["content"])
             else:
-                render_answer(m["parsed"], m.get("hits"), m.get("web"))
+                render_answer(m["parsed"], m.get("hits"))
 
     q = st.chat_input("Tulis pertanyaan Anda… (bahasa Indonesia atau Arab)")
     q = q or st.session_state.pop("pending_q", None)
@@ -1860,9 +1662,9 @@ def page_chat():
         with st.chat_message("assistant", avatar=AVATAR_AI):
             with st.spinner("Mencari di materi…"):
                 try:
-                    raw, parsed, hits, web = answer_question(q, cats=cats, history=history, use_web=use_web)
-                    render_answer(parsed, hits, web)
-                    item = {"role": "assistant", "raw": raw, "parsed": parsed, "hits": hits, "web": web}
+                    raw, parsed, hits = answer_question(q, cats=cats, history=history)
+                    render_answer(parsed, hits)
+                    item = {"role": "assistant", "raw": raw, "parsed": parsed, "hits": hits}
                 except Exception as e:
                     st.error(str(e))
                     item = {"role": "assistant", "content": str(e), "error": True, "raw": ""}
@@ -1870,47 +1672,12 @@ def page_chat():
         history.append(item)
 
 
-def tab_cari_kata(kb):
-    """Cari arti kata di kamus online terpercaya + di materi Kamus Debat MUNAZIR."""
-    st.markdown("Ketik kata atau istilah dalam bahasa **Arab, Indonesia, atau Inggris**, lalu buka di kamus pilihan.")
-    kata = st.text_input("Kata yang dicari", key="cari_kata", placeholder="contoh: مُنَاظَرَةٌ, kebebasan berekspresi, democracy")
-    k = kata.strip()
-    if not k:
-        return
-    q = urllib.parse.quote(k)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.link_button("Al-Maany · Arab–Arab ↗", f"https://www.almaany.com/ar/dict/ar-ar/{q}/")
-    c2.link_button("Al-Maany · Arab–Indonesia ↗", f"https://www.almaany.com/id/dict/ar-id/{q}/")
-    c3.link_button("UNTERM · istilah PBB ↗", f"https://unterm.un.org/unterm/search?urlQuery={q}")
-    c4.link_button("Arabdict · Arab–Inggris ↗", f"https://www.arabdict.com/en/english-arabic/{q}")
-    st.markdown("<div class='subhead'>Di Kamus Debat MUNAZIR</div>", unsafe_allow_html=True)
-    hits = search(kb, k, k=6, cats=["kosakata"], min_score=0.02)
-    if hits:
-        with st.spinner("Memberi harakat…"):
-            harakati_banyak([h["text"][:600] for h in hits] + [h["sub"] for h in hits])
-    if not hits:
-        st.caption("Belum ada di materi Kamus Debat. Silakan cek di kamus online di atas.")
-    for h in hits:
-        st.markdown(
-            f"<div class='snip'><div class='h'><b>{bungkus_arab(esc(terapkan_harakat(h['sub'])))}</b> › {esc(h['source'])}</div>"
-            f"<div dir='auto'>{bungkus_arab(highlight(terapkan_harakat(h['text'][:600]), k)).replace(chr(10), '<br>')}</div></div>",
-            unsafe_allow_html=True,
-        )
-
-
 def page_category(cat: str, kb):
     meta = CATEGORIES[cat]
     nomor = list(CATEGORIES).index(cat) + 1
     page_header(meta["label"], meta["ar"], meta["desc"], f"Materi · {nomor:02d} dari {len(CATEGORIES):02d}")
     docs = [d for d in kb["docs"] if d["cat"] == cat]
-    nama_tab = ["Baca materi", "Cari", "Tanya MUNAZIR"]
-    if cat == "kosakata":
-        nama_tab.append("Kamus online")
-    tabs = st.tabs(nama_tab)
-    t1, t2, t3 = tabs[0], tabs[1], tabs[2]
-    if cat == "kosakata":
-        with tabs[3]:
-            tab_cari_kata(kb)
+    t1, t2, t3 = st.tabs(["Baca materi", "Cari", "Tanya MUNAZIR"])
 
     with t1:
         if not docs:
@@ -1980,15 +1747,14 @@ def page_category(cat: str, kb):
                 )
 
     with t3:
-        use_web = pilihan_internet()
         with st.form(f"ask_{cat}", clear_on_submit=False):
             q2 = st.text_area(f"Pertanyaan tentang {meta['label']}:", height=90, key=f"askq_{cat}")
             go = st.form_submit_button("Tanyakan")
         if go and q2.strip():
             with st.spinner("Mencari jawaban…"):
                 try:
-                    raw, parsed, hits, web = answer_question(q2, cats=[cat], use_web=use_web)
-                    st.session_state[f"ans_{cat}"] = (parsed, hits, web)
+                    raw, parsed, hits = answer_question(q2, cats=[cat])
+                    st.session_state[f"ans_{cat}"] = (parsed, hits)
                 except Exception as e:
                     st.session_state[f"ans_{cat}"] = None
                     st.error(str(e))
