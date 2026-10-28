@@ -1216,6 +1216,25 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .doc.malam .sub{ color:#E9D9B0 !important; border-color:rgba(243,233,210,.1); }
 .doc.malam .tr{ color:#CDBFA6; border-color:#D9BD7E; } .doc.malam mark{ background:rgba(233,217,176,.25); }
 
+/* ───────── Pembaca materi + audio (tombol Dengarkan per paragraf) ───────── */
+div:has(> [class*="st-key-bacaan_kitab"]){ background:#FBF6EA; border:1px solid var(--rule); border-radius:var(--r);
+  box-shadow:0 1px 0 var(--rule), 0 28px 50px -36px rgba(43,31,21,.45); }
+div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radius:var(--r); }
+[class*="st-key-bacaan_"]{ padding:2.2rem clamp(1rem, 4.5vw, 3.5rem) 2.6rem; gap:0 !important; }
+.doc.doc-polos{ background:transparent !important; border:none !important; box-shadow:none !important; padding:0 !important;
+  max-height:none; overflow:visible; }
+.doc.doc-polos p{ margin:.35rem 0; }
+.doc.doc-polos p[dir="rtl"]{ margin:1rem 0 .1rem; }
+.doc.doc-polos .doc-head{ margin-bottom:.6rem; }
+[class*="st-key-ttsrow_"]{ align-items:flex-end; gap:.3rem !important; margin:0 0 .6rem; }
+[class*="st-key-ttsrow_"] .stButton button{ min-height:0 !important; padding:.2rem .75rem !important; border-radius:999px !important;
+  background:transparent !important; color:var(--brass-ink) !important; border:1px solid var(--rule) !important; box-shadow:none !important; }
+[class*="st-key-ttsrow_"] .stButton button p{ font-size:.78rem !important; }
+[class*="st-key-ttsrow_"] .stButton button:hover{ border-color:var(--brass) !important; background:var(--paper-2) !important; transform:none; }
+[class*="st-key-bacaan_malam"] [class*="st-key-ttsrow_"] .stButton button{ color:#D9BD7E !important; border-color:rgba(243,233,210,.2) !important; }
+[class*="st-key-bacaan_malam"] [class*="st-key-ttsrow_"] .stButton button:hover{ background:rgba(243,233,210,.06) !important; }
+[class*="st-key-ttsrow_"] [data-testid="stAudio"], [class*="st-key-ttsrow_"] audio{ width:100%; max-width:520px; }
+
 /* ───────── Beranda ───────── */
 .hero{ padding:.4rem 0 3rem; }
 .hero-top{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; margin-bottom:1.2rem; }
@@ -1335,6 +1354,7 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
   .hero-head{ flex-direction:column; align-items:center; }
   .hero-head .hero-ar{ width:100%; }
   .doc.kitab{ padding:1.8rem 1.1rem; }
+  [class*="st-key-bacaan_"]{ padding:1.4rem .9rem 1.8rem; }
 }
 
 /* Hormati pengguna yang mematikan animasi */
@@ -1446,31 +1466,73 @@ def highlight(text: str, query: str) -> str:
     return out
 
 
-def render_doc(text: str, query: str = "", kitab: bool = True, ukuran: int = 26):
+def _paragraf_html(p: str, query: str = "", ukuran: int = 26) -> str:
+    """HTML satu paragraf materi (Arab penuh, judul bagian, terjemah, atau teks biasa)."""
+    content = highlight(p, query) if query else esc(p)
+    content = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", content)
+    if rasio_arab(p) > 0.75:
+        return f"<p dir='rtl' lang='ar' style='font-size:{ukuran}px'>{content}</p>"
+    if re.match(r"^(Muqaddimah \d+|Mosi \d+|Bagian \d+|\d+\.$)", p):
+        return f"<p class='sub'>{content}</p>"
+    if p.startswith(("“", '"', "Arti:", "Terjemah")):
+        return f"<p class='tr' dir='auto'>{bungkus_arab(content)}</p>"
+    return f"<p dir='auto'>{bungkus_arab(content)}</p>"
+
+
+def _kepala_doc(meta: dict) -> str:
+    if not meta:
+        return ""
+    return (
+        f"<div class='doc-head'><div class='mt' dir='auto'>{bungkus_arab(esc(meta.get('JUDUL', '')))}</div>"
+        f"<div class='mm'><b>Menu</b>{bungkus_arab(esc(meta.get('MENU', '')))}</div>"
+        f"<div class='mm'><b>Sumber</b>{bungkus_arab(esc(meta.get('SUMBER', '')))}</div></div>"
+    )
+
+
+def teks_untuk_audio(p: str) -> str:
+    """Bagian Arab yang dibacakan dari satu paragraf ('' bila tidak ada teks Arab)."""
+    if rasio_arab(p) > 0.75:
+        return p
+    bagian = [m.group(0) for m in AR_RUN.finditer(p) if len(AR_HURUF_DASAR.findall(m.group(0))) >= 2]
+    return " ، ".join(bagian)
+
+
+def pilih_tts(kunci: str):
+    """Dipanggil saat tombol Dengarkan diklik."""
+    st.session_state["tts_putar"] = kunci
+
+
+def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26):
+    """Pembaca materi dengan tombol Dengarkan di setiap paragraf yang memuat teks Arab."""
     meta, body = split_header(text)
-    head = ""
-    if meta:
-        head = (
-            f"<div class='doc-head'><div class='mt' dir='auto'>{bungkus_arab(esc(meta.get('JUDUL', '')))}</div>"
-            f"<div class='mm'><b>Menu</b>{bungkus_arab(esc(meta.get('MENU', '')))}</div>"
-            f"<div class='mm'><b>Sumber</b>{bungkus_arab(esc(meta.get('SUMBER', '')))}</div></div>"
-        )
+    mode = "kitab" if kitab else "malam"
     limit = 60000
     paras = [p.strip() for p in re.split(r"\n+", body[:limit]) if p.strip()]
-    html_paras = []
-    for p in paras:
-        letters = [c for c in p if c.isalpha()]
-        ratio = len(AR_CHARS.findall("".join(letters))) / len(letters) if letters else 0
-        content = highlight(p, query) if query else esc(p)
-        content = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", content)
-        if ratio > 0.75:
-            html_paras.append(f"<p dir='rtl' style='font-size:{ukuran}px'>{content}</p>")
-        elif re.match(r"^(Muqaddimah \d+|Mosi \d+|Bagian \d+|\d+\.$)", p):
-            html_paras.append(f"<p class='sub'>{content}</p>")
-        elif p.startswith(("“", '"', "Arti:", "Terjemah")):
-            html_paras.append(f"<p class='tr' dir='auto'>{bungkus_arab(content)}</p>")
-        else:
-            html_paras.append(f"<p dir='auto'>{bungkus_arab(content)}</p>")
+    putar = st.session_state.get("tts_putar")
+    with st.container(height=640, border=False, key=f"bacaan_{mode}_{cat}"):
+        if meta:
+            st.markdown(f"<div class='doc {mode} doc-polos'>{_kepala_doc(meta)}</div>", unsafe_allow_html=True)
+        for i, p in enumerate(paras):
+            st.markdown(f"<div class='doc {mode} doc-polos'>{_paragraf_html(p, '', ukuran)}</div>", unsafe_allow_html=True)
+            ar = teks_untuk_audio(p)
+            if not ar:
+                continue
+            kunci = f"{cat}_{i}_{_kunci(p)[:10]}"
+            with st.container(key=f"ttsrow_{kunci}"):
+                st.button("Dengarkan", key=f"ttsbtn_{kunci}", icon=":material/volume_up:",
+                          on_click=pilih_tts, args=(kunci,))
+                if putar == kunci:
+                    putar_audio_arab(ar)
+    if len(body) > limit:
+        st.caption(f"… ditampilkan {limit:,} dari {len(body):,} karakter. Gunakan tab Cari / Tanya untuk bagian lainnya.")
+
+
+def render_doc(text: str, query: str = "", kitab: bool = True, ukuran: int = 26):
+    meta, body = split_header(text)
+    head = _kepala_doc(meta)
+    limit = 60000
+    paras = [p.strip() for p in re.split(r"\n+", body[:limit]) if p.strip()]
+    html_paras = [_paragraf_html(p, query, ukuran) for p in paras]
     kelas = "doc kitab" if kitab else "doc malam"
     st.markdown(f"<div class='{kelas}'>{head}{''.join(html_paras)}</div>", unsafe_allow_html=True)
     if len(body) > limit:
@@ -1559,6 +1621,69 @@ def siapkan_harakat_materi(doc) -> str:
             help="Simpan file ini ke folder data/ di GitHub agar harakatnya permanen.",
         )
     return hasil
+
+
+# ─────────────────────────────────────────────────────────────
+# AUDIO TEKS ARAB (Edge TTS — suara neural Microsoft, gratis)
+# Wajib: tambahkan baris  edge-tts  di requirements.txt
+# ─────────────────────────────────────────────────────────────
+SUARA_ARAB = {
+    "Laki-laki · Saudi": "ar-SA-HamedNeural",
+    "Perempuan · Saudi": "ar-SA-ZariyahNeural",
+    "Laki-laki · Mesir": "ar-EG-ShakirNeural",
+    "Perempuan · Mesir": "ar-EG-SalmaNeural",
+}
+KECEPATAN_SUARA = {"Normal": "+0%", "Pelan": "-20%", "Sangat pelan": "-35%"}
+
+
+@st.cache_data(show_spinner=False, max_entries=600)
+def tts_arab(teks: str, suara: str, laju: str) -> bytes:
+    """Ubah teks Arab menjadi audio MP3 dengan Edge TTS (hasil disimpan agar tidak dibuat ulang)."""
+    import asyncio
+    import edge_tts
+
+    async def _buat():
+        buf = bytearray()
+        async for bagian in edge_tts.Communicate(teks, suara, rate=laju).stream():
+            if bagian.get("type") == "audio":
+                buf.extend(bagian["data"])
+        return bytes(buf)
+
+    try:
+        return asyncio.run(_buat())
+    except RuntimeError:  # bila sudah ada event loop yang berjalan
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_buat())
+        finally:
+            loop.close()
+
+
+def pilihan_suara():
+    """Pilihan suara & kecepatan (berlaku di seluruh website)."""
+    c1, c2 = st.columns(2)
+    c1.selectbox("Suara", list(SUARA_ARAB), key="tts_suara")
+    c2.selectbox("Kecepatan", list(KECEPATAN_SUARA), key="tts_laju")
+
+
+def putar_audio_arab(teks: str, autoplay: bool = True):
+    """Buat & putar audio untuk teks Arab (memakai suara dan kecepatan yang dipilih)."""
+    teks = (teks or "").strip()
+    if not teks:
+        return
+    suara = SUARA_ARAB.get(st.session_state.get("tts_suara"), "ar-SA-HamedNeural")
+    laju = KECEPATAN_SUARA.get(st.session_state.get("tts_laju"), "+0%")
+    try:
+        with st.spinner("Menyiapkan audio…"):
+            audio = tts_arab(teks[:4000], suara, laju)
+        if audio:
+            st.audio(audio, format="audio/mp3", autoplay=autoplay)
+        else:
+            st.warning("Audio kosong. Coba lagi sebentar lagi.")
+    except ImportError:
+        st.warning("Fitur audio belum aktif: tambahkan baris `edge-tts` di requirements.txt lalu deploy ulang.")
+    except Exception as e:
+        st.warning(f"Audio sedang tidak tersedia ({e}). Coba lagi sebentar lagi.")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1819,17 +1944,24 @@ def page_category(cat: str, kb):
                             label = (("→ " if i == pick else "") + terapkan_harakat(d["source"])
                                      + (" · unggahan" if d["origin"] != "repo" else ""))
                             st.button(label, key=f"tocbtn_{cat}_{sub_sel}_{i}", on_click=pilih_materi, args=(pick_key, i))
-            o1, o2, o3 = st.columns([1, 1.4, 1.1])
+            o1, o2, o3, o4 = st.columns([1, 1.3, 1, 0.8])
             mode = o1.radio("Tampilan baca", ["Kertas", "Malam"], horizontal=True, key="mode_baca_v2")
             ukuran = o2.slider("Ukuran teks Arab", 20, 36, 26, key="ukuran_arab")
             pakai_harakat = o3.toggle("Harakat otomatis", value=True, key="harakat_doc",
                                       help="Teks Arab yang belum berharakat diberi harakat oleh AI. "
                                            "Hasilnya disimpan, jadi setiap materi cukup diproses sekali.")
+            pakai_audio = o4.toggle("Audio", value=True, key="audio_doc",
+                                    help="Tampilkan tombol Dengarkan di setiap paragraf berbahasa Arab.")
+            if pakai_audio:
+                pilihan_suara()
             doc = shown[pick]
             teks = doc["text"]
             if pakai_harakat:
                 teks = siapkan_harakat_materi(doc)
-            render_doc(teks, kitab=(mode == "Kertas"), ukuran=ukuran)
+            if pakai_audio:
+                render_doc_audio(teks, cat, kitab=(mode == "Kertas"), ukuran=ukuran)
+            else:
+                render_doc(teks, kitab=(mode == "Kertas"), ukuran=ukuran)
 
     with t2:
         q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, POI …")
@@ -1894,7 +2026,12 @@ def page_translate(kb):
                 hasil = parse_sections(raw, ("TERJEMAHAN", "CATATAN"))
                 if harakat:
                     hasil = lengkapi_harakat(hasil, ("TERJEMAHAN", "CATATAN"))
+                asal = text.strip()
+                if harakat and is_mostly_arabic(asal):
+                    asal = harakati(asal, maks_panggilan=4)  # teks Arab asli juga diberi harakat agar dibaca tepat
+                hasil["ASAL"] = asal
                 st.session_state["tr_result"] = hasil
+                st.session_state["tts_terjemahan_on"] = False
             except Exception as e:
                 st.session_state["tr_result"] = None
                 st.error(str(e))
@@ -1907,6 +2044,14 @@ def page_translate(kb):
         else:
             st.markdown(f"<div class='id-box'><div class='eyebrow'>Hasil terjemahan</div>{fmt_campur(tr)}</div>", unsafe_allow_html=True)
         st.code(tr, language=None)
+        teks_suara = tr if is_mostly_arabic(tr) else (res.get("ASAL", "") if is_mostly_arabic(res.get("ASAL", "")) else "")
+        if teks_suara:
+            st.markdown("<div class='subhead'>Dengarkan teks Arab</div>", unsafe_allow_html=True)
+            pilihan_suara()
+            if st.button("Dengarkan", key="tts_terjemahan", icon=":material/volume_up:"):
+                st.session_state["tts_terjemahan_on"] = True
+            if st.session_state.get("tts_terjemahan_on"):
+                putar_audio_arab(teks_suara)
         note = res.get("CATATAN", "").strip()
         if note and note != "-":
             with st.expander("Catatan istilah"):
