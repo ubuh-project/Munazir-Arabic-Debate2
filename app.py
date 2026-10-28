@@ -554,12 +554,12 @@ def parse_sections(raw: str, tags):
 
 
 # ─────────────────────────────────────────────────────────────
-# HARAKAT OTOMATIS (tasykil) untuk SEMUA teks Arab
-# - Teks Arab yang belum berharakat dipotong per kalimat (±320 huruf), lalu diberi harakat
-#   oleh AI Groq (model non-"reasoning"), beberapa permintaan sekaligus agar cepat.
-# - Hasil dicek: kalau AI mengubah huruf/kata atau harakatnya kurang, hasil ditolak & dicoba lagi.
-# - Hasil disimpan di file  harakat_cache.json  (sejajar app.py). Unduh file itu dari menu
-#   Kelola Materi lalu unggah ke GitHub → harakat permanen & langsung tampil untuk semua pengunjung.
+# HARAKAT OTOMATIS (tasykil) untuk SEMUA teks Arab — berjalan di LATAR BELAKANG
+# - Pengunjung TIDAK PERNAH menunggu: halaman langsung tampil dengan harakat yang sudah ada.
+# - Sebuah "pekerja" di server memberi harakat pada seluruh materi secara otomatis, sedikit demi sedikit,
+#   memakai AI Groq (model non-"reasoning"). Hasil dicek: kalau AI mengubah kata, hasil ditolak & dicoba lagi.
+# - Hasil disimpan di  harakat_cache.json  dan (bila GITHUB_TOKEN diisi di Secrets) otomatis disimpan
+#   ke repository GitHub, sehingga harakat permanen walaupun aplikasi di-restart. Tanpa unduh-unggah manual.
 # ─────────────────────────────────────────────────────────────
 HARAKAT_CACHE_FILE = APP_DIR / "harakat_cache.json"
 HARAKAT_SEGMEN = 320        # panjang maksimal satu potongan teks Arab
@@ -744,11 +744,24 @@ def _model_harakat(api_key: str):
     return pilih
 
 
-def _llm_harakat(client, models, batch) -> str:
-    """Satu panggilan AI untuk satu kelompok potongan (aman dijalankan di thread terpisah)."""
+def _jeda_dari_galat(pesan: str) -> float:
+    """Baca 'try again in 1h2m3.5s' dari pesan batas Groq → detik (bawaan 5 menit)."""
+    m = re.search(r"try again in\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:([\d.]+)s)?", pesan)
+    if m and any(m.groups()):
+        h, mnt, dt = (float(x) if x else 0.0 for x in m.groups())
+        return h * 3600 + mnt * 60 + dt + 2
+    return 300.0
+
+
+def _llm_harakat(client, models, batch, jeda=None) -> str:
+    """Satu panggilan AI untuk satu kelompok potongan (aman dijalankan di thread terpisah).
+    'jeda' = {model: waktu_boleh_dipakai_lagi}; model yang kena batas dilewati sementara."""
+    import time
     isi = "\n".join(f"[[{i}]] {t}" for i, t in enumerate(batch, 1))
     galat = None
-    for model in models[:4]:
+    for model in models:
+        if jeda is not None and jeda.get(model, 0) > time.time():
+            continue
         try:
             resp = client.chat.completions.create(
                 model=model,
@@ -761,8 +774,16 @@ def _llm_harakat(client, models, batch) -> str:
                 return text
         except Exception as e:  # model tidak tersedia / kena limit → coba model berikutnya
             galat = e
-            if "invalid api key" in str(e).lower() or "401" in str(e):
+            pesan = str(e).lower()
+            if "invalid api key" in pesan or "401" in pesan:
                 break
+            if jeda is not None:
+                if "429" in pesan or "rate limit" in pesan:
+                    jeda[model] = time.time() + _jeda_dari_galat(str(e))
+                elif "404" in pesan or "decommissioned" in pesan or "not found" in pesan:
+                    jeda[model] = time.time() + 86400
+                else:
+                    jeda[model] = time.time() + 60
     raise RuntimeError(f"Groq: {galat}")
 
 
@@ -819,7 +840,7 @@ def beri_harakat(items, progres=None, maks_panggilan=None) -> int:
 
 
 def harakati(text: str, maks_panggilan: int = 2) -> str:
-    """Untuk teks pendek (mosi, ibarah, judul): beri harakat lalu kembalikan versi berharakat."""
+    """Teks pendek yang diketik pengguna (mis. di Penerjemah): beri harakat langsung, lalu kembalikan hasilnya."""
     if not text:
         return text or ""
     try:
@@ -829,17 +850,155 @@ def harakati(text: str, maks_panggilan: int = 2) -> str:
     return terapkan_harakat(text)
 
 
-def harakati_banyak(texts, maks_panggilan: int = 4):
-    """Beri harakat untuk beberapa teks sekaligus (cuplikan hasil cari, dll)."""
+# ── PEKERJA LATAR BELAKANG ───────────────────────────────────
+def _urutan_kerja(docs):
+    """Daftar potongan Arab seluruh materi, berurutan: judul/subtopik dulu, lalu materi pendek ke panjang."""
     items = []
-    for t in texts:
-        items += kumpulkan_arab(t)
-    if items:
+    for d in docs:
+        items += kumpulkan_arab(d["sub"]) + kumpulkan_arab(d["source"])
+        meta, _ = split_header(d["text"])
+        items += kumpulkan_arab("\n".join(meta.values()))
+    for d in sorted(docs, key=lambda d: (d["cat"] not in ("mosi", "ibarah", "kosakata"), len(d["text"]))):
+        items += kumpulkan_arab(d["text"])
+    return list(dict.fromkeys(items))
+
+
+def _simpan_ke_github(cfg: dict, data: dict, status: dict):
+    """Simpan harakat_cache.json ke repository GitHub (butuh GITHUB_TOKEN & GITHUB_REPO di Secrets)."""
+    import base64
+    import requests
+
+    url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+    kepala = {"Authorization": f"Bearer {cfg['token']}", "Accept": "application/vnd.github+json"}
+    try:
+        lama = requests.get(url, headers=kepala, params={"ref": cfg["branch"]}, timeout=30)
+        sha = lama.json().get("sha") if lama.status_code == 200 else None
+        isi = base64.b64encode(json.dumps(data, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        body = {"message": f"Harakat otomatis: {len(data):,} potongan", "content": isi, "branch": cfg["branch"]}
+        if sha:
+            body["sha"] = sha
+        r = requests.put(url, headers=kepala, json=body, timeout=60)
+        if r.status_code in (200, 201):
+            import time
+            status["github"] = f"tersimpan ke GitHub ({time.strftime('%d-%m %H:%M')} UTC)"
+        else:
+            status["github"] = f"gagal menyimpan ke GitHub (kode {r.status_code}: {r.text[:120]})"
+    except Exception as e:
+        status["github"] = f"gagal menyimpan ke GitHub ({e})"
+
+
+def _jalankan_pekerja(state: dict, g: dict, gagal: dict, api_key: str, cfg_github: dict):
+    """Loop di thread terpisah: beri harakat sedikit demi sedikit sampai semua materi selesai."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    status = state["status"]
+    try:
+        from groq import Groq
+        client = Groq(api_key=api_key)
         try:
-            beri_harakat(items, maks_panggilan=maks_panggilan)
+            ada = {m.id for m in client.models.list().data}
+            models = [m for m in HARAKAT_MODELS if m in ada] + sorted(m for m in ada if "kimi" in m.lower() and m not in HARAKAT_MODELS)
         except Exception:
-            pass
-    return [terapkan_harakat(t) for t in texts]
+            models = list(HARAKAT_MODELS)
+        models = models or list(HARAKAT_MODELS)
+    except Exception as e:
+        status["keadaan"] = f"berhenti: {e}"
+        return
+    jeda = {}
+    docs_lama, items = None, []
+    terakhir_simpan = time.time()
+    perubahan = 0
+    while True:
+        try:
+            if state["docs"] is not docs_lama:  # ada materi baru → susun ulang antrean
+                docs_lama = state["docs"]
+                items = _urutan_kerja(docs_lama)
+            sisa = [t for t in items if _kunci(t) not in g and gagal.get(_kunci(t), 0) < HARAKAT_MAKS_GAGAL]
+            status.update(total=len(items), selesai=len(items) - len(sisa))
+            if not sisa:
+                status["keadaan"] = "selesai — semua teks Arab sudah berharakat"
+                if perubahan and cfg_github:
+                    _simpan_ke_github(cfg_github, g, status)
+                    perubahan = 0
+                time.sleep(120)
+                continue
+            aktif = [m for m in models if jeda.get(m, 0) <= time.time()]
+            if not aktif:
+                tunggu = max(5.0, min(jeda.values()) - time.time())
+                status["keadaan"] = f"menunggu batas AI Groq pulih (±{int(tunggu // 60)} menit)"
+                time.sleep(min(tunggu, 600))
+                continue
+            status["keadaan"] = "sedang memberi harakat"
+            batches = list(_kelompokkan(sisa[: HARAKAT_PARALEL * 10]))[:HARAKAT_PARALEL]
+            with ThreadPoolExecutor(max_workers=HARAKAT_PARALEL) as ex:
+                hasil_semua = list(ex.map(lambda b: _coba_batch(client, aktif, b, jeda), batches))
+            for batch, raw in zip(batches, hasil_semua):
+                if not raw:
+                    continue
+                bagian = re.split(r"\[\[(\d+)\]\]", raw)
+                jawab = {int(bagian[i]): bagian[i + 1].strip() for i in range(1, len(bagian) - 1, 2)}
+                for i, asli in enumerate(batch, 1):
+                    k = _kunci(asli)
+                    if _harakat_sah(asli, jawab.get(i, "")):
+                        g[k] = jawab[i]
+                        perubahan += 1
+                    else:
+                        gagal[k] = gagal.get(k, 0) + 1
+            _simpan_gudang()
+            if cfg_github and perubahan and time.time() - terakhir_simpan > 1800:  # simpan ke GitHub tiap 30 menit
+                _simpan_ke_github(cfg_github, g, status)
+                terakhir_simpan, perubahan = time.time(), 0
+            time.sleep(1)
+        except Exception as e:  # jangan sampai pekerja mati karena satu galat
+            status["keadaan"] = f"galat sementara: {e}"
+            time.sleep(60)
+
+
+def _coba_batch(client, models, batch, jeda):
+    try:
+        return _llm_harakat(client, models, batch, jeda)
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner=False)
+def pekerja_harakat():
+    """Status & data bersama pekerja latar belakang (dibuat sekali per server)."""
+    return {"docs": None, "status": {"keadaan": "belum berjalan", "total": 0, "selesai": 0, "github": ""}, "thread": None}
+
+
+def mulai_pekerja_harakat(docs):
+    """Dipanggil setiap halaman dimuat: perbarui daftar materi & pastikan pekerja berjalan (cepat, tidak menunggu)."""
+    import threading
+
+    state = pekerja_harakat()
+    state["docs"] = docs
+    th = state.get("thread")
+    if th is not None and th.is_alive():
+        return state
+    api_key = get_api_key()
+    if not api_key:
+        state["status"]["keadaan"] = "belum berjalan: API key Groq belum diatur"
+        return state
+    cfg = {}
+    if _secret("GITHUB_TOKEN") and _secret("GITHUB_REPO"):
+        cfg = {"token": _secret("GITHUB_TOKEN"), "repo": _secret("GITHUB_REPO"),
+               "branch": _secret("GITHUB_BRANCH", "main"), "path": _secret("GITHUB_PATH", "harakat_cache.json")}
+    th = threading.Thread(target=_jalankan_pekerja, daemon=True,
+                          args=(state, _gudang_harakat(), _gagal_harakat(), api_key, cfg))
+    th.start()
+    state["thread"] = th
+    return state
+
+
+def persen_harakat(text: str) -> float:
+    """Persentase potongan Arab di teks yang sudah berharakat (0–100)."""
+    items = kumpulkan_arab(text)
+    if not items:
+        return 100.0
+    g = _gudang_harakat()
+    return 100.0 * sum(1 for t in items if _kunci(t) in g) / len(items)
 
 
 def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER"), ekstra=(), maks_panggilan: int = 8) -> dict:
@@ -1405,39 +1564,14 @@ def pilih_materi(key: str, i: int):
     st.session_state[key] = i
 
 
-HARAKAT_MAKS_PANGGILAN = 6  # batas panggilan AI per sekali buka materi (agar tidak terlalu lama menunggu)
-
-
 def siapkan_harakat_materi(doc) -> str:
-    """Beri harakat pada semua teks Arab di satu materi, lalu kembalikan teks yang sudah berharakat."""
+    """Tampilkan materi dengan harakat yang sudah ada — TANPA menunggu (harakat dibuat otomatis di latar belakang)."""
     teks = doc["text"]
-    g, gagal = _gudang_harakat(), _gagal_harakat()
-    belum = [t for t in kumpulkan_arab(teks)
-             if _kunci(t) not in g and gagal.get(_kunci(t), 0) < HARAKAT_MAKS_GAGAL]
-    if belum:
-        if not get_api_key():
-            st.caption("Harakat otomatis membutuhkan API key Groq. Materi ditampilkan apa adanya.")
-        else:
-            st.session_state.pop("harakat_galat", None)
-            judul = f"Memberi harakat pada {len(belum)} bagian teks Arab… (cukup sekali untuk materi ini)"
-            bar = st.progress(0.0, text=judul)
-            sisa = beri_harakat(belum, progres=lambda x: bar.progress(min(1.0, x), text=judul),
-                                maks_panggilan=HARAKAT_MAKS_PANGGILAN)
-            bar.empty()
-            if sisa:
-                alasan = (" Batas permintaan AI Groq sedang tercapai, tunggu sebentar lalu lanjutkan."
-                          if st.session_state.get("harakat_galat") else "")
-                st.info(f"{sisa} bagian teks Arab belum diberi harakat.{alasan} "
-                        "Admin dapat memproses semua materi sekaligus di menu Kelola Materi.")
-                st.button("Lanjutkan memberi harakat", key=f"lanjut_harakat_{doc['cat']}_{_kunci(doc['source'])}")
-    hasil = terapkan_harakat(teks)
-    if hasil != teks:
-        st.download_button(
-            "Unduh versi berharakat (.txt)", hasil.encode("utf-8"), file_name=f"{doc['source']}.txt",
-            mime="text/plain", key=f"unduh_harakat_{doc['cat']}_{_kunci(doc['source'])}",
-            help="Simpan file ini ke folder data/ di GitHub agar harakatnya permanen.",
-        )
-    return hasil
+    persen = persen_harakat(teks)
+    if persen < 100:
+        st.caption(f"Harakat materi ini sedang dilengkapi otomatis di latar belakang ({persen:.0f}% selesai). "
+                   "Muat ulang halaman nanti untuk melihat hasil terbaru.")
+    return terapkan_harakat(teks)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1509,11 +1643,11 @@ def putar_audio_arab(teks: str, autoplay: bool = True):
 def page_home(kb):
     docs = kb["docs"]
     mosi, ibr = mosi_harian(kb), ibarah_harian(kb)
-    # teks Arab mosi & ibarah harian diberi harakat (sekali sehari, lalu tersimpan di gudang)
+    # teks Arab mosi & ibarah harian ditampilkan dengan harakat yang sudah tersedia
     if mosi:
-        mosi = (harakati(mosi[0]), harakati(mosi[1]), mosi[2])
+        mosi = (terapkan_harakat(mosi[0]), terapkan_harakat(mosi[1]), mosi[2])
     if ibr:
-        ibr = (harakati(ibr[0]), harakati(ibr[1]), ibr[2])
+        ibr = (terapkan_harakat(ibr[0]), terapkan_harakat(ibr[1]), ibr[2])
     # Animasi pembuka hanya saat Beranda pertama kali dibuka; kunjungan berikutnya tampil diam.
     intro = not st.session_state.get("beranda_dilihat")
     st.session_state["beranda_dilihat"] = True
@@ -1684,11 +1818,6 @@ def page_category(cat: str, kb):
             st.info(f"Belum ada materi di menu ini. Tambahkan file ke folder `data/{cat}/` di GitHub atau lewat menu **Kelola Materi**.")
         else:
             subs = sorted({d["sub"] for d in docs})
-            # nama subtopik (yang memuat bahasa Arab) diberi harakat sekali, lalu tersimpan
-            try:
-                beri_harakat(kumpulkan_arab("\n".join(subs + [d["source"] for d in docs])), maks_panggilan=3)
-            except Exception:
-                pass
             c1, c2 = st.columns([1, 1.6])
             sub_sel = c1.selectbox("Subtopik", ["Semua subtopik"] + subs, key=f"sub_{cat}", format_func=terapkan_harakat)
             shown = docs if sub_sel == "Semua subtopik" else [d for d in docs if d["sub"] == sub_sel]
@@ -1711,20 +1840,15 @@ def page_category(cat: str, kb):
                             label = (("→ " if i == pick else "") + terapkan_harakat(d["source"])
                                      + (" · unggahan" if d["origin"] != "repo" else ""))
                             st.button(label, key=f"tocbtn_{cat}_{sub_sel}_{i}", on_click=pilih_materi, args=(pick_key, i))
-            o1, o2, o3, o4 = st.columns([1, 1.3, 1, 0.8])
+            o1, o2, o3 = st.columns([1, 1.4, 0.8])
             mode = o1.radio("Tampilan baca", ["Kertas", "Malam"], horizontal=True, key="mode_baca_v2")
             ukuran = o2.slider("Ukuran teks Arab", 20, 36, 26, key="ukuran_arab")
-            pakai_harakat = o3.toggle("Harakat otomatis", value=True, key="harakat_doc",
-                                      help="Teks Arab yang belum berharakat diberi harakat oleh AI. "
-                                           "Hasilnya disimpan, jadi setiap materi cukup diproses sekali.")
-            pakai_audio = o4.toggle("Audio", value=True, key="audio_doc",
+            pakai_audio = o3.toggle("Audio", value=True, key="audio_doc",
                                     help="Tampilkan tombol Dengarkan di setiap paragraf berbahasa Arab.")
             if pakai_audio:
                 pilihan_suara()
             doc = shown[pick]
-            teks = doc["text"]
-            if pakai_harakat:
-                teks = siapkan_harakat_materi(doc)
+            teks = siapkan_harakat_materi(doc)
             if pakai_audio:
                 render_doc_audio(teks, cat, kitab=(mode == "Kertas"), ukuran=ukuran)
             else:
@@ -1734,9 +1858,6 @@ def page_category(cat: str, kb):
         q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, POI …")
         if q:
             hits = search(kb, q, k=10, cats=[cat], min_score=0.02)
-            if hits:
-                with st.spinner("Memberi harakat…"):
-                    harakati_banyak([h["text"] for h in hits] + [h["sub"] for h in hits])
             if not hits:
                 st.warning("Tidak ditemukan. Coba kata kunci lain atau tanya MUNAZIR.")
             for h in hits:
@@ -2000,46 +2121,20 @@ def page_profile():
 
 
 def panel_harakat_admin(kb):
-    """Proses harakat untuk SEMUA materi sekaligus, lalu unduh hasilnya agar permanen di GitHub."""
-    st.markdown("<div class='subhead' style='margin-top:2rem'>Harakat semua materi</div>", unsafe_allow_html=True)
-    semua = []
-    for d in kb["docs"]:
-        semua += kumpulkan_arab(d["text"]) + kumpulkan_arab(d["sub"]) + kumpulkan_arab(d["source"])
-    semua = list(dict.fromkeys(semua))
-    if st.session_state.pop("harakat_peringatan", False):
-        st.warning("Batas permintaan AI Groq tercapai. Tunggu beberapa menit (atau esok hari), lalu lanjutkan.")
-    g, gagal = _gudang_harakat(), _gagal_harakat()
-    sudah = sum(1 for t in semua if _kunci(t) in g)
-    macet = sum(1 for t in semua if _kunci(t) not in g and gagal.get(_kunci(t), 0) >= HARAKAT_MAKS_GAGAL)
-    total = len(semua) or 1
-    st.progress(sudah / total, text=f"{sudah:,} dari {len(semua):,} potongan teks Arab sudah berharakat"
-                                    + (f" · {macet:,} gagal (ditampilkan apa adanya)" if macet else ""))
-    st.caption(
-        "Proses memakai AI Groq. Akun Groq gratis punya batas token harian, jadi materi yang banyak bisa perlu "
-        "beberapa kali proses (bisa dilanjutkan esok hari). Setelah selesai, **unduh harakat_cache.json** lalu "
-        "unggah ke GitHub di folder yang sama dengan app.py. Dengan begitu harakat permanen dan langsung tampil."
-    )
-    c1, c2 = st.columns(2)
-    if c1.button("Proses harakat (± 2 menit)", disabled=sudah >= len(semua) or not get_api_key()):
-        import time
-        mulai = time.time()
-        st.session_state.pop("harakat_galat", None)
-        bar = st.progress(0.0, text="Memberi harakat…")
-        while time.time() - mulai < 120:
-            sisa = [t for t in semua if _kunci(t) not in g and gagal.get(_kunci(t), 0) < HARAKAT_MAKS_GAGAL]
-            if not sisa:
-                break
-            beri_harakat(sisa[:HARAKAT_PARALEL * 12], maks_panggilan=HARAKAT_PARALEL * 2)
-            baru = sum(1 for t in semua if _kunci(t) in g)
-            bar.progress(baru / total, text=f"{baru:,} dari {len(semua):,} potongan sudah berharakat…")
-            if st.session_state.get("harakat_galat"):
-                st.session_state["harakat_peringatan"] = True
-                break
-        st.rerun()
-    c2.download_button(
-        "Unduh harakat_cache.json", json.dumps(g, ensure_ascii=False).encode("utf-8"),
-        file_name="harakat_cache.json", mime="application/json", disabled=not g,
-    )
+    """Status harakat otomatis (hanya informasi, tidak perlu tombol atau unduhan)."""
+    st.markdown("<div class='subhead' style='margin-top:2rem'>Harakat otomatis</div>", unsafe_allow_html=True)
+    stt = pekerja_harakat()["status"]
+    total = stt.get("total") or 0
+    selesai = stt.get("selesai") or 0
+    if total:
+        st.progress(selesai / total, text=f"{selesai:,} dari {total:,} potongan teks Arab sudah berharakat")
+    st.caption(f"Keadaan: {stt.get('keadaan', '-')}" + (f" · GitHub: {stt['github']}" if stt.get("github") else ""))
+    if not (_secret("GITHUB_TOKEN") and _secret("GITHUB_REPO")):
+        st.info(
+            "Agar hasil harakat **permanen** (tidak hilang saat aplikasi di-restart), isi di **Settings → Secrets**:\n\n"
+            "`GITHUB_TOKEN = \"token_github_anda\"`  \n`GITHUB_REPO = \"nama-akun/nama-repo\"`\n\n"
+            "Hasil harakat lalu tersimpan otomatis ke GitHub setiap 30 menit."
+        )
 
 
 def page_manage(kb):
@@ -2129,6 +2224,11 @@ def main():
     st.set_page_config(page_title="MUNAZIR · مُنَاظِرٌ", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
     st.markdown(CSS, unsafe_allow_html=True)
     st.session_state.setdefault("uploads", [])
+    # Harakat untuk seluruh materi dibuat otomatis di latar belakang (pengunjung tidak menunggu)
+    try:
+        mulai_pekerja_harakat(get_kb()["docs"])
+    except Exception:
+        pass
 
     # Layar pembuka animasi logo 3D: hanya sekali tiap kali website dibuka
     if not st.session_state.get("splash_tampil"):
