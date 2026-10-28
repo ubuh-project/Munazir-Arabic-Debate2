@@ -79,18 +79,22 @@ LOGO_SVG = (
     "</svg>"
 )
 
-# ── ANIMASI LOGO 3D (video) ──
-# Taruh file video logo di folder  static/  (sejajar dengan app.py):
-#   static/logo3d.mp4   ← wajib (jalan di semua browser, termasuk iPhone)
-#   static/logo3d.webm  ← opsional (lebih ringan, bisa berlatar transparan)
+# ── ANIMASI LOGO 3D ──
+# Taruh file logo di folder  static/  (sejajar dengan app.py):
+#   static/logo3d.webp  ← UTAMA: animasi berlatar TRANSPARAN (menyatu dengan warna website,
+#                          jalan di semua browser modern termasuk iPhone)
+#   static/logo3d.mp4   ← cadangan (video berlatar krem) bila logo3d.webp belum diunggah
 # Kalau file belum ada, website tetap jalan seperti biasa tanpa animasi.
 STATIC_DIR = APP_DIR / "static"
+LOGO_GAMBAR = "logo3d.webp"
 LOGO_VIDEO = [("logo3d.webm", "video/webm"), ("logo3d.mp4", "video/mp4")]
 SPLASH_DETIK = 4.2  # lama layar pembuka tampil sebelum memudar (detik)
 
 
 def video_logo(kelas: str, ulang: bool = True) -> str:
-    """Tag <video> logo 3D; kosong bila file video belum diunggah."""
+    """Logo 3D beranimasi: gambar WebP transparan (utama) atau <video> (cadangan); kosong bila belum ada file."""
+    if (STATIC_DIR / LOGO_GAMBAR).exists():
+        return f"<img class='{kelas}' src='app/static/{LOGO_GAMBAR}' alt='Logo MUNAZIR' decoding='async'>"
     sumber = "".join(
         f"<source src='app/static/{nama}' type='{tipe}'>"
         for nama, tipe in LOGO_VIDEO if (STATIC_DIR / nama).exists()
@@ -1223,8 +1227,9 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .hero-head .hero-ar{ flex:1; min-width:0; margin:0; }
 .hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto; }
 .intro .hero-logo{ animation:logo-in 1s var(--ease) both; }
-/* tepi video dibuat lembut agar menyatu dengan latar halaman */
-.hero-logo, .splash-logo{ -webkit-mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%);
+/* logo WebP sudah transparan; khusus video cadangan (berlatar krem), tepinya dibuat lembut */
+img.hero-logo, img.splash-logo{ display:block; background:transparent; }
+video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%);
   mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%); }
 @keyframes logo-in{ from{ opacity:0; transform:scale(.82) rotate(-8deg); } to{ opacity:1; transform:none; } }
 
