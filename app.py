@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MUNAZIR (مُنَاظِر) — Panduan & Pedoman Debat Bahasa Arab
+MUNAZIR (مُنَاظِرٌ) — Panduan & Pedoman Debat Bahasa Arab
 Streamlit + Groq AI + basis pengetahuan dari file yang diunggah.
 
 Cara menjalankan lokal:  streamlit run app.py
@@ -9,7 +9,9 @@ API key dibaca dari  st.secrets["GROQ_API_KEY"]  (JANGAN ditulis di kode).
 import io
 import os
 import re
+import json
 import html
+import difflib
 import hashlib
 import urllib.parse
 from pathlib import Path
@@ -169,6 +171,8 @@ BLOCKED_MODEL_WORDS = ("whisper", "guard", "tts", "playai", "orpheus", "compound
 # ─────────────────────────────────────────────────────────────
 AR_DIACRITICS = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]")
 AR_CHARS = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]")
+AR_HURUF_DASAR = re.compile(r"[\u0621-\u063A\u0641-\u064A\u0671-\u06D3]")  # huruf Arab tanpa harakat
+AR_TANDA_HARAKAT = re.compile(r"[\u064B-\u0652\u0670]")  # fathah, kasrah, dammah, tanwin, sukun, syaddah
 
 
 def normalize_text(t: str) -> str:
@@ -692,7 +696,8 @@ def answer_question(question: str, cats=None, history=None, use_web: bool = Fals
             messages.append({"role": "assistant", "content": h["raw"][:1500]})
     messages.append({"role": "user", "content": f"KONTEKS:\n{context}\n\nPERTANYAAN:\n{question}"})
     raw = call_llm(messages)
-    return raw, parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")), hits, web
+    parsed = lengkapi_harakat(parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")))
+    return raw, parsed, hits, web
 
 
 def parse_sections(raw: str, tags):
@@ -710,6 +715,186 @@ def parse_sections(raw: str, tags):
 
 
 # ─────────────────────────────────────────────────────────────
+# HARAKAT OTOMATIS (tasykil) untuk semua teks Arab
+# Teks Arab yang belum berharakat diberi harakat oleh AI (Groq), lalu disimpan
+# di gudang (cache) agar setiap teks cukup diproses SEKALI untuk semua pengunjung.
+# Hasil AI dicek dulu: kalau hurufnya berubah, teks asli yang dipakai.
+# ─────────────────────────────────────────────────────────────
+HARAKAT_CACHE_FILE = APP_DIR / ".harakat_cache.json"
+HARAKAT_BATCH_CHARS = 1500  # panjang teks Arab per sekali panggil AI
+
+SYSTEM_HARAKAT = """Kamu adalah ahli nahwu dan sharaf bahasa Arab. Tugasmu HANYA memberi harakat (tasykil/syakal)
+yang lengkap dan benar pada teks Arab.
+
+ATURAN:
+1. JANGAN mengubah, menambah, menghapus, menukar, atau menerjemahkan kata apa pun. Urutan kata harus sama persis.
+2. Pertahankan tanda baca, angka, simbol, dan kata non-Arab persis seperti aslinya.
+3. Beri harakat pada setiap huruf: fathah, kasrah, dammah, sukun, syaddah, tanwin, termasuk harakat akhir (i'rab)
+   sesuai kedudukannya dalam kalimat. Hamzah washal (ال) tidak diberi harakat.
+4. Setiap baris diawali penanda [[nomor]]. Tulis ulang SETIAP baris dengan penanda yang sama, satu baris per penanda.
+5. Jangan menulis penjelasan, salam, atau teks lain apa pun."""
+
+
+@st.cache_resource(show_spinner=False)
+def _gudang_harakat() -> dict:
+    """Gudang hasil harakat {md5(teks asli): teks berharakat}, dipakai bersama semua pengunjung."""
+    try:
+        return json.loads(HARAKAT_CACHE_FILE.read_text("utf-8"))
+    except Exception:
+        return {}
+
+
+def _simpan_gudang():
+    try:
+        HARAKAT_CACHE_FILE.write_text(json.dumps(_gudang_harakat(), ensure_ascii=False), "utf-8")
+    except Exception:
+        pass
+
+
+def _kunci(t: str) -> str:
+    return hashlib.md5(t.encode("utf-8")).hexdigest()
+
+
+def rasio_arab(t: str) -> float:
+    letters = [c for c in t if c.isalpha()]
+    return len(AR_CHARS.findall("".join(letters))) / len(letters) if letters else 0.0
+
+
+def _baris_arab_utuh(s: str) -> bool:
+    """Baris yang (hampir) seluruhnya Arab diproses utuh; baris header (JUDUL/MENU/SUMBER) dan baris campuran per potongan."""
+    return rasio_arab(s) > 0.75 and not re.match(r"^(JUDUL|MENU|SUMBER):", s)
+
+
+def perlu_harakat(t: str) -> bool:
+    """True bila teks berisi kata Arab yang harakatnya masih sedikit / belum ada."""
+    huruf = len(AR_HURUF_DASAR.findall(t or ""))
+    if huruf < 2:
+        return False
+    return len(AR_TANDA_HARAKAT.findall(t)) < 0.45 * huruf
+
+
+def kumpulkan_arab(text: str):
+    """Ambil bagian Arab yang perlu harakat: satu baris utuh (bila baris itu Arab) atau potongan Arab di baris campuran."""
+    hasil = []
+    for line in (text or "").split("\n"):
+        s = line.strip()
+        if not s or not AR_CHARS.search(s):
+            continue
+        if _baris_arab_utuh(s):
+            if perlu_harakat(s):
+                hasil.append(s)
+        else:
+            hasil.extend(m.group(0) for m in AR_RUN.finditer(s) if perlu_harakat(m.group(0)))
+    return list(dict.fromkeys(hasil))  # buang yang dobel, urutan tetap
+
+
+def terapkan_harakat(text: str) -> str:
+    """Ganti teks Arab dengan versi berharakat yang sudah ada di gudang (tanpa memanggil AI)."""
+    g = _gudang_harakat()
+    if not g or not text:
+        return text or ""
+    out = []
+    for line in text.split("\n"):
+        s = line.strip()
+        k = _kunci(s) if s and _baris_arab_utuh(s) else ""
+        if k and k in g:
+            out.append(line.replace(s, g[k], 1))
+        else:
+            out.append(AR_RUN.sub(lambda m: g.get(_kunci(m.group(0)), m.group(0)), line))
+    return "\n".join(out)
+
+
+def _kerangka(t: str) -> str:
+    """Huruf Arab saja (tanpa harakat & tanda baca) untuk membandingkan teks asli dan hasil AI."""
+    return re.sub(r"[^\u0621-\u064A]", "", normalize_text(t))
+
+
+def _harakat_sah(asli: str, hasil: str) -> bool:
+    a, b = _kerangka(asli), _kerangka(hasil)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.92
+
+
+def _kelompokkan(items):
+    batch, panjang = [], 0
+    for t in items:
+        if batch and panjang + len(t) > HARAKAT_BATCH_CHARS:
+            yield batch
+            batch, panjang = [], 0
+        batch.append(t)
+        panjang += len(t)
+    if batch:
+        yield batch
+
+
+def beri_harakat(items, progres=None, maks_panggilan=None) -> int:
+    """Beri harakat pada daftar teks Arab yang belum ada di gudang.
+    Mengembalikan jumlah teks yang BELUM selesai (0 = semua selesai)."""
+    g = _gudang_harakat()
+    sisa = [t.replace("\n", " ").strip() for t in items]
+    sisa = [t for t in dict.fromkeys(sisa) if t and _kunci(t) not in g]
+    if not sisa or not get_api_key():
+        return len(sisa)
+    batches = list(_kelompokkan(sisa))
+    selesai = 0
+    for n, batch in enumerate(batches):
+        if maks_panggilan is not None and n >= maks_panggilan:
+            break
+        isi = "\n".join(f"[[{i}]] {t}" for i, t in enumerate(batch, 1))
+        try:
+            raw = call_llm(
+                [{"role": "system", "content": SYSTEM_HARAKAT}, {"role": "user", "content": isi}],
+                temperature=0.0,
+                max_tokens=min(8000, int(sum(len(t) for t in batch) * 2.5) + 300),
+            )
+        except Exception as e:  # kena limit / jaringan → berhenti, sisanya dicoba lain kali
+            st.session_state["harakat_galat"] = str(e)
+            break
+        bagian = re.split(r"\[\[(\d+)\]\]", raw)
+        jawab = {}
+        for i in range(1, len(bagian) - 1, 2):
+            jawab[int(bagian[i])] = bagian[i + 1].strip()
+        for i, asli in enumerate(batch, 1):
+            hasil = jawab.get(i, "")
+            # simpan hasil yang sah; kalau AI mengubah kata, simpan teks asli agar tidak diproses ulang
+            g[_kunci(asli)] = hasil if _harakat_sah(asli, hasil) else asli
+            selesai += 1
+        _simpan_gudang()
+        if progres:
+            progres((n + 1) / len(batches))
+    return len(sisa) - selesai
+
+
+def harakati(text: str) -> str:
+    """Untuk teks pendek (mosi, ibarah, nama subtopik): beri harakat lalu kembalikan versi berharakat."""
+    if not text:
+        return text or ""
+    try:
+        beri_harakat(kumpulkan_arab(text))
+    except Exception:
+        pass
+    return terapkan_harakat(text)
+
+
+def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER")) -> dict:
+    """Pastikan teks Arab di jawaban / terjemahan AI berharakat lengkap."""
+    items = []
+    for b in bagian:
+        if b != "SUMBER":
+            items += kumpulkan_arab(parsed.get(b, ""))
+    if not items:
+        return parsed
+    try:
+        beri_harakat(items)
+    except Exception:
+        return parsed
+    return {b: (terapkan_harakat(v) if b != "SUMBER" else v) for b, v in parsed.items()}
+
+
+# ─────────────────────────────────────────────────────────────
 # TAMPILAN (sistem desain: kertas, tinta, kuningan)
 # ─────────────────────────────────────────────────────────────
 CSS = """
@@ -723,8 +908,9 @@ CSS = """
   --rule:#DBD1C0; --rule-soft:#E7DFD1;
   --umber:#2B1F15; --umber-2:#463421; --cream:#F3E9D2;
   --brass:#A57A2C; --brass-ink:#7A5617; --brass-soft:rgba(165,122,44,.14);
-  --serif:'Newsreader', Georgia, 'Times New Roman', serif;
-  --sans:'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Amiri disisipkan sebagai cadangan: huruf Arab di tombol, menu, dan isian ikut memakai Amiri */
+  --serif:'Newsreader', 'Amiri', Georgia, 'Times New Roman', serif;
+  --sans:'IBM Plex Sans', 'Amiri', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --arab:'Amiri', 'Traditional Arabic', 'Times New Roman', serif;
   --ease:cubic-bezier(.2,.7,.2,1);
   --r:10px;
@@ -759,10 +945,24 @@ h1, h2, h3, h4{ font-family:var(--serif) !important; color:var(--ink) !important
 .count{ counter-reset:n var(--n); animation:count 1.6s var(--ease) .5s both; font-variant-numeric:tabular-nums; }
 .count::after{ content:counter(n); }
 
-/* ───────── Teks Arab: jarak & ruang untuk harakat ───────── */
-[lang="ar"], [dir="rtl"]{ line-height:2; }
-.ar-in{ font-family:var(--arab); font-size:1.2em; line-height:2.1; margin:0 .35em; padding:0 .1em; unicode-bidi:isolate; }
-.stMarkdown p:has(.ar-in), .snip div:has(.ar-in), .id-box:has(.ar-in){ line-height:2.1; }
+/* ───────── Teks Arab: jarak & ruang untuk harakat ─────────
+   - line-height besar agar harakat atas (fathah, dammah, syaddah) & bawah (kasrah) tidak terpotong / bertabrakan
+   - word-spacing agar antarkata berjarak
+   - letter-spacing 0 & tanpa huruf kapital: jarak antarhuruf memutus sambungan huruf Arab */
+[lang="ar"], [dir="rtl"]{ font-family:var(--arab); line-height:2.3; word-spacing:.12em; letter-spacing:0 !important;
+  text-transform:none !important; font-feature-settings:normal; }
+.ar-in{ font-family:var(--arab); font-size:1.2em; line-height:2.3; margin:0 .4em; padding:.15em .15em; word-spacing:.12em;
+  letter-spacing:0 !important; text-transform:none !important; font-weight:400; unicode-bidi:isolate; }
+.stMarkdown p:has(.ar-in), .stMarkdown li:has(.ar-in), .snip div:has(.ar-in), .id-box:has(.ar-in), .subhead:has(.ar-in),
+.doc p:has(.ar-in), .mm:has(.ar-in), .mosi-id:has(.ar-in), .q-id:has(.ar-in){ line-height:2.4; }
+.subhead .ar-in, .eyebrow .ar-in, .mm .ar-in{ font-size:1.35em; color:inherit; }
+/* teks Arab di dalam komponen Streamlit (pilihan, tombol, isian, tab) */
+[role="option"], [data-baseweb="select"] [title], [data-baseweb="tab"] p, .stButton button p, [data-testid="stExpander"] summary p,
+[data-testid="stWidgetLabel"] p, textarea, input{ line-height:1.9 !important; }
+[role="option"]{ padding-top:.45rem !important; padding-bottom:.45rem !important; }
+[data-baseweb="select"] > div{ min-height:2.9rem; }
+textarea[dir="rtl"], textarea:lang(ar){ font-size:1.25rem !important; line-height:2.3 !important; }
+.stCode code{ line-height:2.1 !important; word-spacing:.1em; }
 
 /* ───────── Tipografi kecil ───────── */
 .eyebrow{ font-family:var(--sans); font-size:.72rem; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--brass-ink); }
@@ -773,7 +973,7 @@ mark{ background:rgba(165,122,44,.22); color:inherit; padding:0 .1em; border-rad
 .ph{ margin:0 0 1.8rem; }
 .ph-row{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.8rem 2rem; margin:.7rem 0 1rem; }
 .ph-t{ font-family:var(--serif); font-size:clamp(2rem, 4vw, 2.85rem); line-height:1.08; color:var(--ink); letter-spacing:-.02em; }
-.ph-a{ font-family:var(--arab); font-size:clamp(1.45rem, 3vw, 2rem); color:var(--brass-ink); line-height:1.9; padding:.2rem 0; }
+.ph-a{ font-family:var(--arab); font-size:clamp(1.45rem, 3vw, 2rem); color:var(--brass-ink); line-height:2.2; padding:.45rem 0; word-spacing:.12em; }
 .ph-d{ color:var(--muted); max-width:64ch; margin:0 0 1.3rem; line-height:1.65; }
 
 /* ───────── Tombol ───────── */
@@ -851,8 +1051,8 @@ input::placeholder, textarea::placeholder{ color:#A39684 !important; }
 .arab{ margin:1.4rem 0 1rem; background:var(--paper-2); border:1px solid var(--rule); border-radius:var(--r); overflow:hidden; }
 .arab-h{ display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.55rem 1rem; border-bottom:1px solid var(--rule-soft);
   font-size:.7rem; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600; }
-.arab-h [lang="ar"]{ letter-spacing:0; text-transform:none; font-size:.98rem; color:var(--brass-ink); font-weight:400; }
-.arab-t{ padding:1.3rem 1.5rem 1.4rem; font-family:var(--arab); font-size:1.5rem; line-height:2.5; color:var(--ink); text-align:right; }
+.arab-h [lang="ar"]{ letter-spacing:0; text-transform:none; font-size:1.05rem; line-height:2; color:var(--brass-ink); font-weight:400; }
+.arab-t{ padding:1.5rem 1.6rem 1.6rem; font-family:var(--arab); font-size:1.5rem; line-height:2.75; word-spacing:.15em; color:var(--ink); text-align:right; }
 .id-box{ background:var(--paper-2); border:1px solid var(--rule); border-radius:var(--r); padding:1rem 1.25rem; line-height:1.75; color:var(--ink); }
 .cites{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.8rem; }
 .cite{ display:inline-flex; align-items:center; gap:.45rem; font-size:.78rem; padding:.28rem .62rem; border:1px solid var(--rule); border-radius:6px;
@@ -868,7 +1068,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 /* ───────── Pembaca materi ───────── */
 .doc{ max-height:72vh; overflow-y:auto; border-radius:var(--r); scrollbar-width:thin; scrollbar-color:var(--rule) transparent; }
 .doc p{ margin:.6rem 0; line-height:1.95; color:var(--ink-2); }
-.doc p[dir="rtl"]{ font-family:var(--arab); text-align:right; line-height:2.4; color:var(--ink); margin:1.1rem 0; }
+.doc p[dir="rtl"]{ font-family:var(--arab); text-align:right; line-height:2.75; word-spacing:.15em; color:var(--ink); margin:1.4rem 0; }
 .doc .doc-head{ text-align:center; padding:0 0 1.3rem; margin-bottom:1.3rem; border-bottom:1px solid var(--rule); }
 .doc .doc-head .mt{ font-family:var(--serif); font-size:1.6rem; color:var(--ink); line-height:1.25; }
 .doc .doc-head .mm{ font-size:.8rem; color:var(--muted); margin-top:.35rem; }
@@ -888,7 +1088,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .hero{ padding:.4rem 0 3rem; }
 .hero-top{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; margin-bottom:1.2rem; }
 .hero-meta{ font-size:.82rem; color:var(--muted); }
-.hero-ar{ font-family:var(--arab); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:1.75; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.3rem 0; }
+.hero-ar{ font-family:var(--arab); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:2.05; word-spacing:.1em; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.6rem 0; }
 .hero-grid{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:clamp(1.8rem, 5vw, 4.5rem); margin-top:2.2rem; align-items:start; }
 .hero-lead{ font-family:var(--serif); font-size:clamp(1.2rem, 2.2vw, 1.45rem); line-height:1.5; color:var(--ink); margin:0 0 1.8rem; max-width:34ch; }
 .hero-head{ display:flex; align-items:center; gap:clamp(1rem, 3vw, 2.6rem); margin:0 0 1.2rem; }
@@ -905,7 +1105,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
   background:var(--paper); pointer-events:none; animation:splash-out .8s var(--ease) var(--t, 3.5s) forwards; }
 .splash-logo{ width:min(56vw, 340px); height:auto; animation:logo-in 1s var(--ease) both; }
 .splash-nama{ font-family:var(--serif); font-size:1.05rem; letter-spacing:.32em; color:var(--ink-2); animation:logo-in 1s var(--ease) .35s both; }
-.splash-nama span{ font-family:var(--arab); letter-spacing:0; font-size:1.4rem; margin-left:.9rem; }
+.splash-nama span{ font-family:var(--arab); letter-spacing:0; font-size:1.4rem; line-height:2.2; margin-left:.9rem; }
 @keyframes splash-out{ to{ opacity:0; visibility:hidden; } }
 .hero-cta{ display:flex; flex-wrap:wrap; align-items:center; gap:.6rem 1.4rem; }
 .stats{ display:flex; flex-wrap:wrap; gap:1.2rem 2.6rem; margin:2.4rem 0 0; padding-top:1.3rem; border-top:1px solid var(--rule-soft); }
@@ -923,7 +1123,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .mosi{ position:relative; overflow:hidden; background:var(--paper-2); border:1px solid var(--rule); border-radius:14px; padding:1.6rem 1.6rem 1.4rem; }
 .mosi-top{ display:flex; justify-content:space-between; align-items:center; gap:1rem; }
 .mosi-no{ font-family:var(--serif); font-size:.9rem; color:var(--muted); }
-.mosi-ar{ font-family:var(--arab); font-size:1.55rem; line-height:2.3; color:var(--ink); text-align:right; margin:1.4rem 0 1.1rem; position:relative; }
+.mosi-ar{ font-family:var(--arab); font-size:1.55rem; line-height:2.65; word-spacing:.12em; color:var(--ink); text-align:right; margin:1.4rem 0 1.1rem; position:relative; }
 .mosi-id{ color:var(--ink-2); line-height:1.65; margin:0; position:relative; }
 .tag{ display:inline-block; margin-top:1.1rem; font-size:.74rem; color:var(--ink-2); border:1px solid var(--rule); border-radius:999px; padding:.2rem .7rem; }
 .khatam{ position:absolute; right:-52px; bottom:-52px; width:180px; height:180px; opacity:.5; pointer-events:none; }
@@ -944,12 +1144,12 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .idx-n{ font-family:var(--serif); font-size:.95rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 .idx-t{ display:block; font-family:var(--serif); font-size:1.35rem; line-height:1.2; color:var(--ink); }
 .idx-d{ display:block; font-size:.86rem; line-height:1.55; color:var(--muted); margin-top:.3rem; max-width:60ch; }
-.idx-ar{ font-family:var(--arab); font-size:1.3rem; line-height:2; color:var(--brass-ink); white-space:nowrap; padding:0 .8rem; }
+.idx-ar{ font-family:var(--arab); font-size:1.3rem; line-height:2.4; color:var(--brass-ink); white-space:nowrap; padding:0 .8rem; }
 .idx-c{ font-size:.8rem; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
 .idx a:hover .idx-go{ transform:translateX(5px); color:var(--brass-ink); }
 .quote{ margin-top:3.6rem; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:clamp(1.4rem, 4vw, 3.5rem); align-items:center;
   padding:clamp(1.6rem, 4vw, 2.8rem); background:var(--paper-2); border:1px solid var(--rule); border-radius:14px; }
-.quote .q-ar{ font-family:var(--arab); font-size:clamp(1.6rem, 3vw, 2.2rem); line-height:2.3; color:var(--ink); text-align:right; padding:.4rem 0; }
+.quote .q-ar{ font-family:var(--arab); font-size:clamp(1.6rem, 3vw, 2.2rem); line-height:2.6; word-spacing:.12em; color:var(--ink); text-align:right; padding:.4rem 0; }
 .quote .q-id{ font-family:var(--serif); font-style:italic; font-size:1.2rem; line-height:1.55; color:var(--ink-2); margin:.8rem 0 0; }
 .steps{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1.8rem; position:relative; }
 .steps::before{ content:""; position:absolute; left:0; right:0; top:1.05rem; height:1px; background:var(--rule); }
@@ -959,7 +1159,7 @@ a.cite:hover{ border-color:var(--brass); color:var(--brass-ink) !important; }
 .steps li:hover .st-n{ background:var(--ink); color:var(--paper); }
 .st-t{ font-family:var(--serif); font-size:1.18rem; color:var(--ink); }
 .st-d{ font-size:.88rem; color:var(--muted); line-height:1.6; margin-top:.35rem; }
-.st-a{ font-family:var(--arab); font-size:1.15rem; line-height:2.1; color:var(--brass-ink); margin-top:.9rem; }
+.st-a{ font-family:var(--arab); font-size:1.15rem; line-height:2.45; word-spacing:.1em; color:var(--brass-ink); margin-top:.9rem; }
 .band{ position:relative; overflow:hidden; margin-top:3.8rem; background:var(--umber); border-radius:16px; padding:clamp(1.7rem, 4vw, 2.7rem);
   display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1.4rem; }
 .band-t{ font-family:var(--serif); font-size:clamp(1.45rem, 3vw, 1.95rem); color:#F6EEDC; line-height:1.2; }
@@ -1099,8 +1299,8 @@ def render_answer(parsed: dict, hits=None, web=None):
         with st.expander(f"Cuplikan materi yang dipakai · {len(hits)}"):
             for h in hits:
                 st.markdown(
-                    f"<div class='snip'><div class='h'><b>{esc(CATEGORIES[h['cat']]['label'])}</b> › {esc(h.get('sub', ''))} · "
-                    f"{esc(h['source'])} · skor {h['score']:.2f}</div><div dir='auto'>{fmt_campur(h['text'][:700])}</div></div>",
+                    f"<div class='snip'><div class='h'><b>{esc(CATEGORIES[h['cat']]['label'])}</b> › {bungkus_arab(esc(terapkan_harakat(h.get('sub', ''))))} · "
+                    f"{esc(h['source'])} · skor {h['score']:.2f}</div><div dir='auto'>{fmt_campur(terapkan_harakat(h['text'])[:700])}</div></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -1118,8 +1318,9 @@ def render_doc(text: str, query: str = "", kitab: bool = True, ukuran: int = 26)
     head = ""
     if meta:
         head = (
-            f"<div class='doc-head'><div class='mt'>{esc(meta.get('JUDUL', ''))}</div>"
-            f"<div class='mm'><b>Menu</b>{esc(meta.get('MENU', ''))}</div><div class='mm'><b>Sumber</b>{esc(meta.get('SUMBER', ''))}</div></div>"
+            f"<div class='doc-head'><div class='mt' dir='auto'>{bungkus_arab(esc(meta.get('JUDUL', '')))}</div>"
+            f"<div class='mm'><b>Menu</b>{bungkus_arab(esc(meta.get('MENU', '')))}</div>"
+            f"<div class='mm'><b>Sumber</b>{bungkus_arab(esc(meta.get('SUMBER', '')))}</div></div>"
         )
     limit = 60000
     paras = [p.strip() for p in re.split(r"\n+", body[:limit]) if p.strip()]
@@ -1192,12 +1393,50 @@ def pilih_materi(key: str, i: int):
     st.session_state[key] = i
 
 
+HARAKAT_MAKS_PANGGILAN = 12  # batas panggilan AI per sekali buka halaman (agar tidak terlalu lama menunggu)
+
+
+def siapkan_harakat_materi(doc) -> str:
+    """Beri harakat pada semua teks Arab di satu materi, lalu kembalikan teks yang sudah berharakat."""
+    teks = doc["text"]
+    g = _gudang_harakat()
+    belum = [t for t in kumpulkan_arab(teks) if _kunci(t) not in g]
+    if belum:
+        if not get_api_key():
+            st.caption("Harakat otomatis membutuhkan API key Groq. Materi ditampilkan apa adanya.")
+        else:
+            st.session_state.pop("harakat_galat", None)
+            judul = f"Memberi harakat pada {len(belum)} bagian teks Arab… (cukup sekali untuk materi ini)"
+            bar = st.progress(0.0, text=judul)
+            sisa = beri_harakat(belum, progres=lambda x: bar.progress(min(1.0, x), text=judul),
+                                maks_panggilan=HARAKAT_MAKS_PANGGILAN)
+            bar.empty()
+            if sisa:
+                alasan = (" Batas permintaan AI sedang tercapai, tunggu sebentar lalu lanjutkan."
+                          if st.session_state.get("harakat_galat") else "")
+                st.info(f"{sisa} bagian teks Arab belum diberi harakat.{alasan}")
+                st.button("Lanjutkan memberi harakat", key=f"lanjut_harakat_{doc['cat']}_{_kunci(doc['source'])}")
+    hasil = terapkan_harakat(teks)
+    if hasil != teks:
+        st.download_button(
+            "Unduh versi berharakat (.txt)", hasil.encode("utf-8"), file_name=f"{doc['source']}.txt",
+            mime="text/plain", key=f"unduh_harakat_{doc['cat']}_{_kunci(doc['source'])}",
+            help="Simpan file ini ke folder data/ di GitHub agar harakatnya permanen.",
+        )
+    return hasil
+
+
 # ─────────────────────────────────────────────────────────────
 # HALAMAN
 # ─────────────────────────────────────────────────────────────
 def page_home(kb):
     docs = kb["docs"]
     mosi, ibr = mosi_harian(kb), ibarah_harian(kb)
+    # teks Arab mosi & ibarah harian diberi harakat (sekali sehari, lalu tersimpan di gudang)
+    if mosi:
+        mosi = (mosi[0], harakati(mosi[1]), mosi[2])
+    if ibr:
+        ibr = (ibr[0], harakati(ibr[1]), ibr[2])
     # Animasi pembuka hanya saat Beranda pertama kali dibuka; kunjungan berikutnya tampil diam.
     intro = not st.session_state.get("beranda_dilihat")
     st.session_state["beranda_dilihat"] = True
@@ -1211,7 +1450,7 @@ def page_home(kb):
             f"<aside class='mosi reveal' style='--i:4'>{KHATAM}"
             f"<div class='mosi-top'><span class='eyebrow'>Mosi hari ini</span><span class='mosi-no'>{esc(tanggal_id())}</span></div>"
             f"<div class='mosi-ar' dir='rtl' lang='ar'>{esc(mosi[1])}</div>"
-            f"<p class='mosi-id'>{esc(mosi[2])}</p><span class='tag'>Tema · {esc(mosi[0])}</span></aside>"
+            f"<p class='mosi-id'>{fmt_campur(mosi[2])}</p><span class='tag'>Tema · {esc(mosi[0])}</span></aside>"
         )
     st.markdown(
         f"<section class='hero{' intro' if intro else ''}'>"
@@ -1256,7 +1495,7 @@ def page_home(kb):
         st.markdown(
             "<section class='quote reveal'><div>"
             f"<div class='eyebrow'>Ibarah pilihan · {esc(ibr[0].replace('Ibārah untuk ', ''))}</div>"
-            f"<p class='q-id'>{esc(ibr[2])}</p></div>"
+            f"<p class='q-id'>{fmt_campur(ibr[2])}</p></div>"
             f"<div class='q-ar' dir='rtl' lang='ar'>{esc(ibr[1])}</div></section>",
             unsafe_allow_html=True,
         )
@@ -1313,7 +1552,7 @@ AVATAR_USER = ":material/person:"
 
 
 def page_chat():
-    page_header("Chat MUNAZIR", "حِوَارٌ مَعَ مُنَاظِر",
+    page_header("Chat MUNAZIR", "حِوَارٌ مَعَ مُنَاظِرٍ",
                 "Tanyakan apa saja seputar materi debat. Jawaban dalam bahasa Indonesia, disertai teks Arab dari sumber.", "Asisten")
     cek_api_key()
     history = st.session_state.setdefault("chat", [])
@@ -1390,8 +1629,8 @@ def tab_cari_kata(kb):
         st.caption("Belum ada di materi Kamus Debat. Silakan cek di kamus online di atas.")
     for h in hits:
         st.markdown(
-            f"<div class='snip'><div class='h'><b>{esc(h['sub'])}</b> › {esc(h['source'])}</div>"
-            f"<div dir='auto'>{bungkus_arab(highlight(h['text'][:600], k)).replace(chr(10), '<br>')}</div></div>",
+            f"<div class='snip'><div class='h'><b>{bungkus_arab(esc(terapkan_harakat(h['sub'])))}</b> › {esc(h['source'])}</div>"
+            f"<div dir='auto'>{bungkus_arab(highlight(terapkan_harakat(h['text'])[:600], k)).replace(chr(10), '<br>')}</div></div>",
             unsafe_allow_html=True,
         )
 
@@ -1415,8 +1654,13 @@ def page_category(cat: str, kb):
             st.info(f"Belum ada materi di menu ini. Tambahkan file ke folder `data/{cat}/` di GitHub atau lewat menu **Kelola Materi**.")
         else:
             subs = sorted({d["sub"] for d in docs})
+            # nama subtopik (yang memuat bahasa Arab) diberi harakat sekali, lalu tersimpan
+            try:
+                beri_harakat(kumpulkan_arab("\n".join(subs)))
+            except Exception:
+                pass
             c1, c2 = st.columns([1, 1.6])
-            sub_sel = c1.selectbox("Subtopik", ["Semua subtopik"] + subs, key=f"sub_{cat}")
+            sub_sel = c1.selectbox("Subtopik", ["Semua subtopik"] + subs, key=f"sub_{cat}", format_func=terapkan_harakat)
             shown = docs if sub_sel == "Semua subtopik" else [d for d in docs if d["sub"] == sub_sel]
             shown = sorted(shown, key=lambda d: (d["sub"], d["source"]))
             pick_key = f"doc_{cat}_{sub_sel}"
@@ -1429,16 +1673,24 @@ def page_category(cat: str, kb):
             with st.expander(f"Daftar isi · {len(shown)} materi", expanded=False):
                 with st.container(key=f"toc_{cat}"):
                     for s_name in sorted({d["sub"] for d in shown}):
-                        st.markdown(f"<div class='subhead'>{esc(s_name)}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='subhead'>{bungkus_arab(esc(terapkan_harakat(s_name)))}</div>",
+                                    unsafe_allow_html=True)
                         for i, d in enumerate(shown):
                             if d["sub"] != s_name:
                                 continue
                             label = ("→ " if i == pick else "") + d["source"] + (" · unggahan" if d["origin"] != "repo" else "")
                             st.button(label, key=f"tocbtn_{cat}_{sub_sel}_{i}", on_click=pilih_materi, args=(pick_key, i))
-            o1, o2 = st.columns([1, 1.4])
+            o1, o2, o3 = st.columns([1, 1.4, 1.1])
             mode = o1.radio("Tampilan baca", ["Kertas", "Malam"], horizontal=True, key="mode_baca_v2")
             ukuran = o2.slider("Ukuran teks Arab", 20, 36, 26, key="ukuran_arab")
-            render_doc(shown[pick]["text"], kitab=(mode == "Kertas"), ukuran=ukuran)
+            pakai_harakat = o3.toggle("Harakat otomatis", value=True, key="harakat_doc",
+                                      help="Teks Arab yang belum berharakat diberi harakat oleh AI. "
+                                           "Hasilnya disimpan, jadi setiap materi cukup diproses sekali.")
+            doc = shown[pick]
+            teks = doc["text"]
+            if pakai_harakat:
+                teks = siapkan_harakat_materi(doc)
+            render_doc(teks, kitab=(mode == "Kertas"), ukuran=ukuran)
 
     with t2:
         q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, POI …")
@@ -1448,8 +1700,8 @@ def page_category(cat: str, kb):
                 st.warning("Tidak ditemukan. Coba kata kunci lain atau tanya MUNAZIR.")
             for h in hits:
                 st.markdown(
-                    f"<div class='snip'><div class='h'><b>{esc(h['sub'])}</b> › {esc(h['source'])} · relevansi {h['score']:.2f}</div>"
-                    f"<div dir='auto'>{bungkus_arab(highlight(h['text'], q)).replace(chr(10), '<br>')}</div></div>",
+                    f"<div class='snip'><div class='h'><b>{bungkus_arab(esc(terapkan_harakat(h['sub'])))}</b> › {esc(h['source'])} · relevansi {h['score']:.2f}</div>"
+                    f"<div dir='auto'>{bungkus_arab(highlight(terapkan_harakat(h['text']), q)).replace(chr(10), '<br>')}</div></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -1497,7 +1749,10 @@ def page_translate(kb):
         with st.spinner("Menerjemahkan…"):
             try:
                 raw = call_llm([{"role": "system", "content": SYSTEM_TRANSLATE}, {"role": "user", "content": user}], temperature=0.2)
-                st.session_state["tr_result"] = parse_sections(raw, ("TERJEMAHAN", "CATATAN"))
+                hasil = parse_sections(raw, ("TERJEMAHAN", "CATATAN"))
+                if harakat:
+                    hasil = lengkapi_harakat(hasil, ("TERJEMAHAN", "CATATAN"))
+                st.session_state["tr_result"] = hasil
             except Exception as e:
                 st.session_state["tr_result"] = None
                 st.error(str(e))
@@ -1526,9 +1781,10 @@ body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .main{flex:999 1 420px;min-width:0;padding:28px 22px 26px;border-radius:16px;background:var(--umber);color:var(--cream);display:flex;flex-direction:column;align-items:center;gap:16px}
 .side{flex:1 1 260px;padding:18px 14px;border-radius:16px;background:var(--paper2);border:1px solid var(--rule);display:flex;flex-direction:column;gap:6px}
-.tim{font-size:11px;letter-spacing:.16em;font-weight:600;text-align:center;text-transform:uppercase}
+.tim{font-size:11px;letter-spacing:.16em;font-weight:600;text-align:center;text-transform:uppercase;line-height:2}
 .nama{font-family:'Newsreader',Georgia,serif;font-size:26px;color:#F6EEDC;text-align:center;margin-top:4px}
-.ar{font-family:'Amiri',serif;font-size:21px;line-height:2;color:#D9BD7E;text-align:center;margin-top:8px}
+.ar{font-family:'Amiri',serif;font-size:22px;line-height:2.4;word-spacing:.12em;color:#D9BD7E;text-align:center;margin-top:8px}
+.tar{font-family:'Amiri',serif;font-size:15px;letter-spacing:0;text-transform:none;font-weight:400;line-height:2;margin-left:4px}
 .ring{position:relative;width:260px;height:260px}
 .ring svg{display:block}
 #arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
@@ -1559,7 +1815,7 @@ button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 </style></head><body>
 <div class="wrap">
  <div class="main">
-  <div><div class="tim" id="tim"></div><div class="nama" id="nama"></div><div class="ar" id="ar" dir="rtl"></div></div>
+  <div><div class="tim" id="tim"></div><div class="nama" id="nama"></div><div class="ar" id="ar" dir="rtl" lang="ar"></div></div>
   <div class="ring"><svg width="260" height="260" viewBox="0 0 300 300" aria-hidden="true"><circle cx="150" cy="150" r="130" fill="none" stroke="rgba(243,233,210,.10)" stroke-width="10"/><circle id="arc" cx="150" cy="150" r="130" fill="none" stroke="#C9A04E" stroke-width="10" stroke-linecap="round" stroke-dasharray="816.8" stroke-dashoffset="0" transform="rotate(-90 150 150)"/></svg>
    <div class="t"><div class="sisa" id="sisa" role="timer">00:00</div><div class="dari" id="dari"></div></div></div>
   <div class="fase" id="fase"><i id="dot"></i><span id="faseTxt"></span></div>
@@ -1592,7 +1848,7 @@ function fase(p,total,sisa){
 }
 function render(){
  const p=P[idx], total=p.m*60, sisa=Math.max(0,total-lewat);
- $('tim').textContent=p.t==='PRO'?'Tim Pro · الْمُوَالَاةُ':'Tim Kontra · الْمُعَارَضَةُ';
+ $('tim').innerHTML=p.t==='PRO'?'Tim Pro · <span class="tar" lang="ar">الْمُوَالَاةُ</span>':'Tim Kontra · <span class="tar" lang="ar">الْمُعَارَضَةُ</span>';
  $('tim').style.color=p.t==='PRO'?'#9CC2A7':'#E3A08F';
  $('nama').textContent=p.n; $('ar').textContent=p.ar;
  $('sisa').textContent=String(Math.floor(sisa/60)).padStart(2,'0')+':'+String(sisa%60).padStart(2,'0');
@@ -1771,7 +2027,7 @@ def halaman(fungsi, judul, alamat, ikon_menu=None, default=False):
 
 
 def main():
-    st.set_page_config(page_title="MUNAZIR · مُنَاظِر", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
+    st.set_page_config(page_title="MUNAZIR · مُنَاظِرٌ", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
     st.markdown(CSS, unsafe_allow_html=True)
     st.session_state.setdefault("uploads", [])
 
@@ -1782,7 +2038,7 @@ def main():
         if vid:
             st.markdown(
                 f"<div class='splash' style='--t:{SPLASH_DETIK}s' aria-hidden='true'>{vid}"
-                "<div class='splash-nama'>MUNAZIR<span lang='ar'>مُنَاظِر</span></div></div>",
+                "<div class='splash-nama'>MUNAZIR<span lang='ar'>مُنَاظِرٌ</span></div></div>",
                 unsafe_allow_html=True,
             )
     try:
@@ -1813,7 +2069,7 @@ def main():
     st.navigation(menu, position="top").run()
 
     st.markdown(
-        f"<footer class='foot'><span><b>MUNAZIR</b><span class='ar-in' lang='ar'>مُنَاظِر</span> · Panduan debat bahasa Arab</span>"
+        f"<footer class='foot'><span><b>MUNAZIR</b><span class='ar-in' lang='ar' dir='rtl'>مُنَاظِرٌ</span> · Panduan debat bahasa Arab</span>"
         f"<span>Dikembangkan oleh {esc(PROFIL['nama'])}</span></footer>",
         unsafe_allow_html=True,
     )
