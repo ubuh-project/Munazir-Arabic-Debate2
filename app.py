@@ -696,7 +696,10 @@ def answer_question(question: str, cats=None, history=None, use_web: bool = Fals
             messages.append({"role": "assistant", "content": h["raw"][:1500]})
     messages.append({"role": "user", "content": f"KONTEKS:\n{context}\n\nPERTANYAAN:\n{question}"})
     raw = call_llm(messages)
-    parsed = lengkapi_harakat(parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")))
+    parsed = lengkapi_harakat(
+        parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")),
+        ekstra=[h["text"] for h in hits] + [w["content"][:400] for w in web],
+    )
     return raw, parsed, hits, web
 
 
@@ -715,22 +718,36 @@ def parse_sections(raw: str, tags):
 
 
 # ─────────────────────────────────────────────────────────────
-# HARAKAT OTOMATIS (tasykil) untuk semua teks Arab
-# Teks Arab yang belum berharakat diberi harakat oleh AI (Groq), lalu disimpan
-# di gudang (cache) agar setiap teks cukup diproses SEKALI untuk semua pengunjung.
-# Hasil AI dicek dulu: kalau hurufnya berubah, teks asli yang dipakai.
+# HARAKAT OTOMATIS (tasykil) untuk SEMUA teks Arab
+# - Teks Arab yang belum berharakat dipotong per kalimat (±320 huruf), lalu diberi harakat
+#   oleh AI Groq (model non-"reasoning"), beberapa permintaan sekaligus agar cepat.
+# - Hasil dicek: kalau AI mengubah huruf/kata atau harakatnya kurang, hasil ditolak & dicoba lagi.
+# - Hasil disimpan di file  harakat_cache.json  (sejajar app.py). Unduh file itu dari menu
+#   Kelola Materi lalu unggah ke GitHub → harakat permanen & langsung tampil untuk semua pengunjung.
 # ─────────────────────────────────────────────────────────────
-HARAKAT_CACHE_FILE = APP_DIR / ".harakat_cache.json"
-HARAKAT_BATCH_CHARS = 1500  # panjang teks Arab per sekali panggil AI
+HARAKAT_CACHE_FILE = APP_DIR / "harakat_cache.json"
+HARAKAT_SEGMEN = 320        # panjang maksimal satu potongan teks Arab
+HARAKAT_BATCH_CHARS = 900   # jumlah huruf Arab per sekali panggil AI
+HARAKAT_PARALEL = 3         # jumlah panggilan AI yang berjalan bersamaan
+HARAKAT_MAKS_GAGAL = 2      # potongan yang gagal 2x dibiarkan apa adanya
+# Model untuk harakat: hanya model biasa (bukan model "reasoning" seperti gpt-oss / qwen3)
+HARAKAT_MODELS = [
+    "moonshotai/kimi-k2-instruct-0905",
+    "moonshotai/kimi-k2-instruct",
+    "llama-3.3-70b-versatile",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+]
 
 SYSTEM_HARAKAT = """Kamu adalah ahli nahwu dan sharaf bahasa Arab. Tugasmu HANYA memberi harakat (tasykil/syakal)
 yang lengkap dan benar pada teks Arab.
 
 ATURAN:
-1. JANGAN mengubah, menambah, menghapus, menukar, atau menerjemahkan kata apa pun. Urutan kata harus sama persis.
+1. JANGAN mengubah, menambah, menghapus, menukar, atau menerjemahkan kata apa pun. Urutan kata harus sama persis,
+   walaupun ada kata yang tampak salah ketik.
 2. Pertahankan tanda baca, angka, simbol, dan kata non-Arab persis seperti aslinya.
-3. Beri harakat pada setiap huruf: fathah, kasrah, dammah, sukun, syaddah, tanwin, termasuk harakat akhir (i'rab)
-   sesuai kedudukannya dalam kalimat. Hamzah washal (ال) tidak diberi harakat.
+3. Beri harakat pada SETIAP huruf: fathah, kasrah, dammah, sukun, syaddah, tanwin, termasuk harakat akhir (i'rab)
+   sesuai kedudukannya dalam kalimat.
 4. Setiap baris diawali penanda [[nomor]]. Tulis ulang SETIAP baris dengan penanda yang sama, satu baris per penanda.
 5. Jangan menulis penjelasan, salam, atau teks lain apa pun."""
 
@@ -739,9 +756,16 @@ ATURAN:
 def _gudang_harakat() -> dict:
     """Gudang hasil harakat {md5(teks asli): teks berharakat}, dipakai bersama semua pengunjung."""
     try:
-        return json.loads(HARAKAT_CACHE_FILE.read_text("utf-8"))
+        data = json.loads(HARAKAT_CACHE_FILE.read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+@st.cache_resource(show_spinner=False)
+def _gagal_harakat() -> dict:
+    """Hitungan gagal per potongan (agar potongan bermasalah tidak dicoba terus-menerus)."""
+    return {}
 
 
 def _simpan_gudang():
@@ -773,19 +797,59 @@ def perlu_harakat(t: str) -> bool:
     return len(AR_TANDA_HARAKAT.findall(t)) < 0.45 * huruf
 
 
+def _potong(s: str):
+    """Potong teks Arab panjang menjadi bagian ≤ HARAKAT_SEGMEN huruf, di tanda baca atau spasi.
+    Selalu berlaku:  "".join(_potong(s)) == s"""
+    if len(s) <= HARAKAT_SEGMEN:
+        return [s]
+    kecil = []
+    for k in re.split(r"(?<=[.،؛!?؟:])(?=\s)", s):
+        while len(k) > HARAKAT_SEGMEN:
+            cut = k.rfind(" ", 1, HARAKAT_SEGMEN)
+            cut = cut if cut > 0 else HARAKAT_SEGMEN
+            kecil.append(k[:cut])
+            k = k[cut:]
+        if k:
+            kecil.append(k)
+    hasil, cur = [], ""
+    for k in kecil:
+        if cur and len(cur) + len(k) > HARAKAT_SEGMEN:
+            hasil.append(cur)
+            cur = k
+        else:
+            cur += k
+    if cur:
+        hasil.append(cur)
+    return hasil
+
+
+def _bagian_arab(s: str):
+    """Bagian Arab di satu baris (sudah di-strip): baris utuh atau potongan-potongan Arab di baris campuran."""
+    return [s] if _baris_arab_utuh(s) else [m.group(0) for m in AR_RUN.finditer(s)]
+
+
 def kumpulkan_arab(text: str):
-    """Ambil bagian Arab yang perlu harakat: satu baris utuh (bila baris itu Arab) atau potongan Arab di baris campuran."""
+    """Semua potongan Arab di teks yang perlu harakat (urutan tetap, tanpa dobel)."""
     hasil = []
     for line in (text or "").split("\n"):
         s = line.strip()
         if not s or not AR_CHARS.search(s):
             continue
-        if _baris_arab_utuh(s):
-            if perlu_harakat(s):
-                hasil.append(s)
-        else:
-            hasil.extend(m.group(0) for m in AR_RUN.finditer(s) if perlu_harakat(m.group(0)))
-    return list(dict.fromkeys(hasil))  # buang yang dobel, urutan tetap
+        for b in _bagian_arab(s):
+            for p in _potong(b):
+                p = p.strip()
+                if p and perlu_harakat(p):
+                    hasil.append(p)
+    return list(dict.fromkeys(hasil))
+
+
+def _ganti_bagian(b: str, g: dict) -> str:
+    out = []
+    for p in _potong(b):
+        s = p.strip()
+        v = g.get(_kunci(s)) if s else None
+        out.append(p.replace(s, v, 1) if v else p)
+    return "".join(out)
 
 
 def terapkan_harakat(text: str) -> str:
@@ -796,26 +860,29 @@ def terapkan_harakat(text: str) -> str:
     out = []
     for line in text.split("\n"):
         s = line.strip()
-        k = _kunci(s) if s and _baris_arab_utuh(s) else ""
-        if k and k in g:
-            out.append(line.replace(s, g[k], 1))
+        if not s or not AR_CHARS.search(s):
+            out.append(line)
+        elif _baris_arab_utuh(s):
+            out.append(line.replace(s, _ganti_bagian(s, g), 1))
         else:
-            out.append(AR_RUN.sub(lambda m: g.get(_kunci(m.group(0)), m.group(0)), line))
+            out.append(AR_RUN.sub(lambda m: _ganti_bagian(m.group(0), g), line))
     return "\n".join(out)
 
 
 def _kerangka(t: str) -> str:
-    """Huruf Arab saja (tanpa harakat & tanda baca) untuk membandingkan teks asli dan hasil AI."""
+    """Huruf Arab saja (tanpa harakat, spasi & tanda baca) untuk membandingkan teks asli dan hasil AI."""
     return re.sub(r"[^\u0621-\u064A]", "", normalize_text(t))
 
 
 def _harakat_sah(asli: str, hasil: str) -> bool:
+    if not hasil or perlu_harakat(hasil):
+        return False
     a, b = _kerangka(asli), _kerangka(hasil)
     if not a or not b:
         return False
     if a == b:
         return True
-    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.92
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio() >= 0.93
 
 
 def _kelompokkan(items):
@@ -830,67 +897,128 @@ def _kelompokkan(items):
         yield batch
 
 
+def _model_harakat(api_key: str):
+    avail = available_models(api_key)
+    if not avail:
+        return HARAKAT_MODELS
+    pilih = [m for m in HARAKAT_MODELS if m in avail]
+    pilih += [m for m in avail if "kimi" in m.lower() and m not in pilih]
+    if not pilih:  # cadangan: model apa saja yang bukan model "reasoning"
+        pilih = [m for m in candidate_models(api_key) if not any(x in m.lower() for x in ("gpt-oss", "qwen3", "deepseek"))]
+    return pilih
+
+
+def _llm_harakat(client, models, batch) -> str:
+    """Satu panggilan AI untuk satu kelompok potongan (aman dijalankan di thread terpisah)."""
+    isi = "\n".join(f"[[{i}]] {t}" for i, t in enumerate(batch, 1))
+    galat = None
+    for model in models[:4]:
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": SYSTEM_HARAKAT}, {"role": "user", "content": isi}],
+                temperature=0.0,
+                max_tokens=min(8000, int(sum(len(t) for t in batch) * 3) + 300),
+            )
+            text = re.sub(r"<think>.*?</think>", "", resp.choices[0].message.content or "", flags=re.S).strip()
+            if text:
+                return text
+        except Exception as e:  # model tidak tersedia / kena limit → coba model berikutnya
+            galat = e
+            if "invalid api key" in str(e).lower() or "401" in str(e):
+                break
+    raise RuntimeError(f"Groq: {galat}")
+
+
 def beri_harakat(items, progres=None, maks_panggilan=None) -> int:
-    """Beri harakat pada daftar teks Arab yang belum ada di gudang.
-    Mengembalikan jumlah teks yang BELUM selesai (0 = semua selesai)."""
-    g = _gudang_harakat()
-    sisa = [t.replace("\n", " ").strip() for t in items]
-    sisa = [t for t in dict.fromkeys(sisa) if t and _kunci(t) not in g]
-    if not sisa or not get_api_key():
+    """Beri harakat pada potongan-potongan teks Arab yang belum ada di gudang.
+    Mengembalikan jumlah potongan yang masih BELUM berharakat (0 = semua selesai)."""
+    g, gagal = _gudang_harakat(), _gagal_harakat()
+
+    def masih(t):
+        k = _kunci(t)
+        return k not in g and gagal.get(k, 0) < HARAKAT_MAKS_GAGAL
+
+    sisa = [t for t in dict.fromkeys(x.strip() for x in items) if t and masih(t)]
+    api_key = get_api_key()
+    if not sisa or not api_key:
         return len(sisa)
     batches = list(_kelompokkan(sisa))
-    selesai = 0
-    for n, batch in enumerate(batches):
-        if maks_panggilan is not None and n >= maks_panggilan:
-            break
-        isi = "\n".join(f"[[{i}]] {t}" for i, t in enumerate(batch, 1))
-        try:
-            raw = call_llm(
-                [{"role": "system", "content": SYSTEM_HARAKAT}, {"role": "user", "content": isi}],
-                temperature=0.0,
-                max_tokens=min(8000, int(sum(len(t) for t in batch) * 2.5) + 300),
-            )
-        except Exception as e:  # kena limit / jaringan → berhenti, sisanya dicoba lain kali
-            st.session_state["harakat_galat"] = str(e)
-            break
-        bagian = re.split(r"\[\[(\d+)\]\]", raw)
-        jawab = {}
-        for i in range(1, len(bagian) - 1, 2):
-            jawab[int(bagian[i])] = bagian[i + 1].strip()
-        for i, asli in enumerate(batch, 1):
-            hasil = jawab.get(i, "")
-            # simpan hasil yang sah; kalau AI mengubah kata, simpan teks asli agar tidak diproses ulang
-            g[_kunci(asli)] = hasil if _harakat_sah(asli, hasil) else asli
-            selesai += 1
-        _simpan_gudang()
-        if progres:
-            progres((n + 1) / len(batches))
-    return len(sisa) - selesai
+    if maks_panggilan is not None:
+        batches = batches[:maks_panggilan]
+    try:
+        client = get_client(api_key)
+        models = _model_harakat(api_key)
+    except Exception as e:
+        st.session_state["harakat_galat"] = str(e)
+        return len(sisa)
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    beres = 0
+    with ThreadPoolExecutor(max_workers=HARAKAT_PARALEL) as ex:
+        tugas = {ex.submit(_llm_harakat, client, models, b): b for b in batches}
+        for f in as_completed(tugas):
+            batch = tugas[f]
+            beres += 1
+            try:
+                raw = f.result()
+            except Exception as e:  # kena limit / jaringan → sisanya dicoba lain kali
+                st.session_state["harakat_galat"] = str(e)
+                raw = None
+            if raw:
+                bagian = re.split(r"\[\[(\d+)\]\]", raw)
+                jawab = {int(bagian[i]): bagian[i + 1].strip() for i in range(1, len(bagian) - 1, 2)}
+                for i, asli in enumerate(batch, 1):
+                    hasil = jawab.get(i, "")
+                    k = _kunci(asli)
+                    if _harakat_sah(asli, hasil):
+                        g[k] = hasil
+                    else:
+                        gagal[k] = gagal.get(k, 0) + 1
+            if progres:
+                progres(beres / len(batches))
+    _simpan_gudang()
+    return sum(1 for t in sisa if masih(t))
 
 
-def harakati(text: str) -> str:
-    """Untuk teks pendek (mosi, ibarah, nama subtopik): beri harakat lalu kembalikan versi berharakat."""
+def harakati(text: str, maks_panggilan: int = 2) -> str:
+    """Untuk teks pendek (mosi, ibarah, judul): beri harakat lalu kembalikan versi berharakat."""
     if not text:
         return text or ""
     try:
-        beri_harakat(kumpulkan_arab(text))
+        beri_harakat(kumpulkan_arab(text), maks_panggilan=maks_panggilan)
     except Exception:
         pass
     return terapkan_harakat(text)
 
 
-def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER")) -> dict:
-    """Pastikan teks Arab di jawaban / terjemahan AI berharakat lengkap."""
+def harakati_banyak(texts, maks_panggilan: int = 4):
+    """Beri harakat untuk beberapa teks sekaligus (cuplikan hasil cari, kamus, dll)."""
+    items = []
+    for t in texts:
+        items += kumpulkan_arab(t)
+    if items:
+        try:
+            beri_harakat(items, maks_panggilan=maks_panggilan)
+        except Exception:
+            pass
+    return [terapkan_harakat(t) for t in texts]
+
+
+def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER"), ekstra=(), maks_panggilan: int = 8) -> dict:
+    """Pastikan teks Arab di jawaban / terjemahan AI (dan teks pendukungnya) berharakat lengkap."""
     items = []
     for b in bagian:
         if b != "SUMBER":
             items += kumpulkan_arab(parsed.get(b, ""))
-    if not items:
-        return parsed
-    try:
-        beri_harakat(items)
-    except Exception:
-        return parsed
+    for t in ekstra:
+        items += kumpulkan_arab(t)
+    if items:
+        try:
+            beri_harakat(items, maks_panggilan=maks_panggilan)
+        except Exception:
+            return parsed
     return {b: (terapkan_harakat(v) if b != "SUMBER" else v) for b, v in parsed.items()}
 
 
@@ -1292,7 +1420,7 @@ def render_answer(parsed: dict, hits=None, web=None):
                 domain = urllib.parse.urlparse(w["url"]).netloc.replace("www.", "")
                 st.markdown(
                     f"<div class='snip'><div class='h'><b>{esc(domain)}</b> · <a href='{esc(w['url'])}' target='_blank' rel='noopener'>"
-                    f"{esc(w['title'] or w['url'])}</a></div><div dir='auto'>{bungkus_arab(esc(w['content'][:400]))}…</div></div>",
+                    f"{esc(w['title'] or w['url'])}</a></div><div dir='auto'>{bungkus_arab(esc(terapkan_harakat(w['content'][:400])))}…</div></div>",
                     unsafe_allow_html=True,
                 )
     if hits:
@@ -1393,14 +1521,15 @@ def pilih_materi(key: str, i: int):
     st.session_state[key] = i
 
 
-HARAKAT_MAKS_PANGGILAN = 12  # batas panggilan AI per sekali buka halaman (agar tidak terlalu lama menunggu)
+HARAKAT_MAKS_PANGGILAN = 6  # batas panggilan AI per sekali buka materi (agar tidak terlalu lama menunggu)
 
 
 def siapkan_harakat_materi(doc) -> str:
     """Beri harakat pada semua teks Arab di satu materi, lalu kembalikan teks yang sudah berharakat."""
     teks = doc["text"]
-    g = _gudang_harakat()
-    belum = [t for t in kumpulkan_arab(teks) if _kunci(t) not in g]
+    g, gagal = _gudang_harakat(), _gagal_harakat()
+    belum = [t for t in kumpulkan_arab(teks)
+             if _kunci(t) not in g and gagal.get(_kunci(t), 0) < HARAKAT_MAKS_GAGAL]
     if belum:
         if not get_api_key():
             st.caption("Harakat otomatis membutuhkan API key Groq. Materi ditampilkan apa adanya.")
@@ -1412,9 +1541,10 @@ def siapkan_harakat_materi(doc) -> str:
                                 maks_panggilan=HARAKAT_MAKS_PANGGILAN)
             bar.empty()
             if sisa:
-                alasan = (" Batas permintaan AI sedang tercapai, tunggu sebentar lalu lanjutkan."
+                alasan = (" Batas permintaan AI Groq sedang tercapai, tunggu sebentar lalu lanjutkan."
                           if st.session_state.get("harakat_galat") else "")
-                st.info(f"{sisa} bagian teks Arab belum diberi harakat.{alasan}")
+                st.info(f"{sisa} bagian teks Arab belum diberi harakat.{alasan} "
+                        "Admin dapat memproses semua materi sekaligus di menu Kelola Materi.")
                 st.button("Lanjutkan memberi harakat", key=f"lanjut_harakat_{doc['cat']}_{_kunci(doc['source'])}")
     hasil = terapkan_harakat(teks)
     if hasil != teks:
@@ -1434,9 +1564,9 @@ def page_home(kb):
     mosi, ibr = mosi_harian(kb), ibarah_harian(kb)
     # teks Arab mosi & ibarah harian diberi harakat (sekali sehari, lalu tersimpan di gudang)
     if mosi:
-        mosi = (mosi[0], harakati(mosi[1]), mosi[2])
+        mosi = (harakati(mosi[0]), harakati(mosi[1]), mosi[2])
     if ibr:
-        ibr = (ibr[0], harakati(ibr[1]), ibr[2])
+        ibr = (harakati(ibr[0]), harakati(ibr[1]), ibr[2])
     # Animasi pembuka hanya saat Beranda pertama kali dibuka; kunjungan berikutnya tampil diam.
     intro = not st.session_state.get("beranda_dilihat")
     st.session_state["beranda_dilihat"] = True
@@ -1450,7 +1580,7 @@ def page_home(kb):
             f"<aside class='mosi reveal' style='--i:4'>{KHATAM}"
             f"<div class='mosi-top'><span class='eyebrow'>Mosi hari ini</span><span class='mosi-no'>{esc(tanggal_id())}</span></div>"
             f"<div class='mosi-ar' dir='rtl' lang='ar'>{esc(mosi[1])}</div>"
-            f"<p class='mosi-id'>{fmt_campur(mosi[2])}</p><span class='tag'>Tema · {esc(mosi[0])}</span></aside>"
+            f"<p class='mosi-id'>{fmt_campur(mosi[2])}</p><span class='tag'>Tema · {bungkus_arab(esc(mosi[0]))}</span></aside>"
         )
     st.markdown(
         f"<section class='hero{' intro' if intro else ''}'>"
@@ -1494,7 +1624,7 @@ def page_home(kb):
     if ibr:
         st.markdown(
             "<section class='quote reveal'><div>"
-            f"<div class='eyebrow'>Ibarah pilihan · {esc(ibr[0].replace('Ibārah untuk ', ''))}</div>"
+            f"<div class='eyebrow'>Ibarah pilihan · {bungkus_arab(esc(ibr[0].replace('Ibārah untuk ', '')))}</div>"
             f"<p class='q-id'>{fmt_campur(ibr[2])}</p></div>"
             f"<div class='q-ar' dir='rtl' lang='ar'>{esc(ibr[1])}</div></section>",
             unsafe_allow_html=True,
@@ -1625,12 +1755,15 @@ def tab_cari_kata(kb):
     c4.link_button("Arabdict · Arab–Inggris ↗", f"https://www.arabdict.com/en/english-arabic/{q}")
     st.markdown("<div class='subhead'>Di Kamus Debat MUNAZIR</div>", unsafe_allow_html=True)
     hits = search(kb, k, k=6, cats=["kosakata"], min_score=0.02)
+    if hits:
+        with st.spinner("Memberi harakat…"):
+            harakati_banyak([h["text"][:600] for h in hits] + [h["sub"] for h in hits])
     if not hits:
         st.caption("Belum ada di materi Kamus Debat. Silakan cek di kamus online di atas.")
     for h in hits:
         st.markdown(
             f"<div class='snip'><div class='h'><b>{bungkus_arab(esc(terapkan_harakat(h['sub'])))}</b> › {esc(h['source'])}</div>"
-            f"<div dir='auto'>{bungkus_arab(highlight(terapkan_harakat(h['text'])[:600], k)).replace(chr(10), '<br>')}</div></div>",
+            f"<div dir='auto'>{bungkus_arab(highlight(terapkan_harakat(h['text'][:600]), k)).replace(chr(10), '<br>')}</div></div>",
             unsafe_allow_html=True,
         )
 
@@ -1656,7 +1789,7 @@ def page_category(cat: str, kb):
             subs = sorted({d["sub"] for d in docs})
             # nama subtopik (yang memuat bahasa Arab) diberi harakat sekali, lalu tersimpan
             try:
-                beri_harakat(kumpulkan_arab("\n".join(subs)))
+                beri_harakat(kumpulkan_arab("\n".join(subs + [d["source"] for d in docs])), maks_panggilan=3)
             except Exception:
                 pass
             c1, c2 = st.columns([1, 1.6])
@@ -1667,7 +1800,7 @@ def page_category(cat: str, kb):
             pick = c2.selectbox(
                 "Materi yang dibaca",
                 range(len(shown)),
-                format_func=lambda i: f"{shown[i]['source']}",
+                format_func=lambda i: terapkan_harakat(shown[i]["source"]),
                 key=pick_key,
             )
             with st.expander(f"Daftar isi · {len(shown)} materi", expanded=False):
@@ -1678,7 +1811,8 @@ def page_category(cat: str, kb):
                         for i, d in enumerate(shown):
                             if d["sub"] != s_name:
                                 continue
-                            label = ("→ " if i == pick else "") + d["source"] + (" · unggahan" if d["origin"] != "repo" else "")
+                            label = (("→ " if i == pick else "") + terapkan_harakat(d["source"])
+                                     + (" · unggahan" if d["origin"] != "repo" else ""))
                             st.button(label, key=f"tocbtn_{cat}_{sub_sel}_{i}", on_click=pilih_materi, args=(pick_key, i))
             o1, o2, o3 = st.columns([1, 1.4, 1.1])
             mode = o1.radio("Tampilan baca", ["Kertas", "Malam"], horizontal=True, key="mode_baca_v2")
@@ -1696,6 +1830,9 @@ def page_category(cat: str, kb):
         q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, POI …")
         if q:
             hits = search(kb, q, k=10, cats=[cat], min_score=0.02)
+            if hits:
+                with st.spinner("Memberi harakat…"):
+                    harakati_banyak([h["text"] for h in hits] + [h["sub"] for h in hits])
             if not hits:
                 st.warning("Tidak ditemukan. Coba kata kunci lain atau tanya MUNAZIR.")
             for h in hits:
@@ -1946,6 +2083,49 @@ def page_profile():
     )
 
 
+def panel_harakat_admin(kb):
+    """Proses harakat untuk SEMUA materi sekaligus, lalu unduh hasilnya agar permanen di GitHub."""
+    st.markdown("<div class='subhead' style='margin-top:2rem'>Harakat semua materi</div>", unsafe_allow_html=True)
+    semua = []
+    for d in kb["docs"]:
+        semua += kumpulkan_arab(d["text"]) + kumpulkan_arab(d["sub"]) + kumpulkan_arab(d["source"])
+    semua = list(dict.fromkeys(semua))
+    if st.session_state.pop("harakat_peringatan", False):
+        st.warning("Batas permintaan AI Groq tercapai. Tunggu beberapa menit (atau esok hari), lalu lanjutkan.")
+    g, gagal = _gudang_harakat(), _gagal_harakat()
+    sudah = sum(1 for t in semua if _kunci(t) in g)
+    macet = sum(1 for t in semua if _kunci(t) not in g and gagal.get(_kunci(t), 0) >= HARAKAT_MAKS_GAGAL)
+    total = len(semua) or 1
+    st.progress(sudah / total, text=f"{sudah:,} dari {len(semua):,} potongan teks Arab sudah berharakat"
+                                    + (f" · {macet:,} gagal (ditampilkan apa adanya)" if macet else ""))
+    st.caption(
+        "Proses memakai AI Groq. Akun Groq gratis punya batas token harian, jadi materi yang banyak bisa perlu "
+        "beberapa kali proses (bisa dilanjutkan esok hari). Setelah selesai, **unduh harakat_cache.json** lalu "
+        "unggah ke GitHub di folder yang sama dengan app.py. Dengan begitu harakat permanen dan langsung tampil."
+    )
+    c1, c2 = st.columns(2)
+    if c1.button("Proses harakat (± 2 menit)", disabled=sudah >= len(semua) or not get_api_key()):
+        import time
+        mulai = time.time()
+        st.session_state.pop("harakat_galat", None)
+        bar = st.progress(0.0, text="Memberi harakat…")
+        while time.time() - mulai < 120:
+            sisa = [t for t in semua if _kunci(t) not in g and gagal.get(_kunci(t), 0) < HARAKAT_MAKS_GAGAL]
+            if not sisa:
+                break
+            beri_harakat(sisa[:HARAKAT_PARALEL * 12], maks_panggilan=HARAKAT_PARALEL * 2)
+            baru = sum(1 for t in semua if _kunci(t) in g)
+            bar.progress(baru / total, text=f"{baru:,} dari {len(semua):,} potongan sudah berharakat…")
+            if st.session_state.get("harakat_galat"):
+                st.session_state["harakat_peringatan"] = True
+                break
+        st.rerun()
+    c2.download_button(
+        "Unduh harakat_cache.json", json.dumps(g, ensure_ascii=False).encode("utf-8"),
+        file_name="harakat_cache.json", mime="application/json", disabled=not g,
+    )
+
+
 def page_manage(kb):
     page_header("Kelola Materi", "إِدَارَةُ الْمَوَادِّ", "Unggah file PDF / DOCX / TXT sebagai basis pengetahuan MUNAZIR.", "Admin")
     admin_pw = _secret("ADMIN_PASSWORD")
@@ -2000,12 +2180,15 @@ def page_manage(kb):
             st.session_state["up_key"] = up_key + 1
             st.rerun()
 
+    panel_harakat_admin(kb)
+
     st.markdown("<div class='subhead' style='margin-top:2rem'>Isi basis pengetahuan</div>", unsafe_allow_html=True)
     counts = {}
     for c in kb["chunks"]:
         counts[(c["cat"], c["source"])] = counts.get((c["cat"], c["source"]), 0) + 1
     rows = [
-        {"Menu": CATEGORIES[d["cat"]]["label"], "Subtopik": d["sub"], "File": d["source"], "Potongan": counts.get((d["cat"], d["source"]), 0),
+        {"Menu": CATEGORIES[d["cat"]]["label"], "Subtopik": terapkan_harakat(d["sub"]), "File": terapkan_harakat(d["source"]),
+         "Potongan": counts.get((d["cat"], d["source"]), 0),
          "Karakter": len(d["text"])}
         for d in kb["docs"]
     ]
