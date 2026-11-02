@@ -145,7 +145,7 @@ PROFIL = {
     # "Email": "nama@gmail.com",  "Instagram": "@username",  "WhatsApp": "081234567890"
     "kontak": {
         "Email": "cakubuh9@gmail.com",
-        "Instagram": "@cak_ubuh",
+        "Instagram": "@msubhiii_",
         "WhatsApp": "087767461023",
     },
 }
