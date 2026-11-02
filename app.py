@@ -532,10 +532,7 @@ def answer_question(question: str, cats=None, history=None):
             messages.append({"role": "assistant", "content": h["raw"][:1500]})
     messages.append({"role": "user", "content": f"KONTEKS:\n{context}\n\nPERTANYAAN:\n{question}"})
     raw = call_llm(messages)
-    parsed = lengkapi_harakat(
-        parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")),
-        ekstra=[h["text"] for h in hits],
-    )
+    parsed = lengkapi_harakat(parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")))
     return raw, parsed, hits
 
 
@@ -557,23 +554,38 @@ def parse_sections(raw: str, tags):
 # HARAKAT OTOMATIS (tasykil) untuk SEMUA teks Arab — berjalan di LATAR BELAKANG
 # - Pengunjung TIDAK PERNAH menunggu: halaman langsung tampil dengan harakat yang sudah ada.
 # - Sebuah "pekerja" di server memberi harakat pada seluruh materi secara otomatis, sedikit demi sedikit,
-#   memakai AI Groq (model non-"reasoning"). Hasil dicek: kalau AI mengubah kata, hasil ditolak & dicoba lagi.
+#   memakai AI Groq. Hasil dicek: kalau AI mengubah kata, hasil ditolak & dicoba lagi.
 # - Hasil disimpan di  harakat_cache.json  dan (bila GITHUB_TOKEN diisi di Secrets) otomatis disimpan
 #   ke repository GitHub, sehingga harakat permanen walaupun aplikasi di-restart. Tanpa unduh-unggah manual.
+#
+# PERBAIKAN (versi ini):
+# 1. Model yang tidak ditemukan / sudah dihentikan Groq tidak lagi mengunci SEMUA model selama 24 jam.
+#    Daftar model dibaca ulang dari Groq setiap 30 menit, dan model cadangan dipakai otomatis.
+# 2. Jatah AI tidak lagi dihabiskan oleh Chat: cuplikan materi di chat tidak diberi harakat lewat AI
+#    (cukup memakai hasil pekerja), sehingga jatah harian Groq dipakai untuk menyelesaikan materi.
+# 3. Hasil disimpan ke GitHub setiap 10 menit (bukan 30 menit), jadi progres tidak hilang saat restart.
+# 4. Panel Kelola Materi menampilkan model yang dipakai, galat terakhir, dan tombol "Coba lagi sekarang".
 # ─────────────────────────────────────────────────────────────
 HARAKAT_CACHE_FILE = APP_DIR / "harakat_cache.json"
 HARAKAT_SEGMEN = 320        # panjang maksimal satu potongan teks Arab
-HARAKAT_BATCH_CHARS = 900   # jumlah huruf Arab per sekali panggil AI
-HARAKAT_PARALEL = 3         # jumlah panggilan AI yang berjalan bersamaan
-HARAKAT_MAKS_GAGAL = 2      # potongan yang gagal 2x dibiarkan apa adanya
-# Model untuk harakat: hanya model biasa (bukan model "reasoning" seperti gpt-oss / qwen3)
+HARAKAT_BATCH_CHARS = 700   # jumlah huruf Arab per sekali panggil AI (lebih kecil = lebih jarang kena batas per menit)
+HARAKAT_PARALEL = 2         # jumlah panggilan AI yang berjalan bersamaan
+HARAKAT_MAKS_GAGAL = 3      # potongan yang gagal 3x dibiarkan apa adanya (sampai tombol "Coba lagi" ditekan)
+HARAKAT_SIMPAN_GITHUB = 600  # simpan ke GitHub tiap 10 menit bila ada hasil baru
+HARAKAT_SEGARKAN_MODEL = 1800  # baca ulang daftar model Groq tiap 30 menit
+# Urutan model untuk harakat (yang tidak tersedia di akun Groq otomatis dilewati)
 HARAKAT_MODELS = [
     "moonshotai/kimi-k2-instruct-0905",
     "moonshotai/kimi-k2-instruct",
     "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3-32b",
     "meta-llama/llama-4-maverick-17b-128e-instruct",
     "meta-llama/llama-4-scout-17b-16e-instruct",
+    "allam-2-7b",
 ]
+# Model yang tidak dipakai untuk harakat (bukan model teks, atau terlalu kecil sehingga harakatnya sering salah)
+HARAKAT_TOLAK = BLOCKED_MODEL_WORDS + ("8b", "20b", "1b", "3b", "vision", "embed")
 
 SYSTEM_HARAKAT = """Kamu adalah ahli nahwu dan sharaf bahasa Arab. Tugasmu HANYA memberi harakat (tasykil/syakal)
 yang lengkap dan benar pada teks Arab.
@@ -604,9 +616,13 @@ def _gagal_harakat() -> dict:
     return {}
 
 
-def _simpan_gudang():
+def _simpan_gudang(g: dict = None):
+    """Simpan gudang ke harakat_cache.json. 'g' dikirim langsung bila dipanggil dari thread pekerja."""
     try:
-        HARAKAT_CACHE_FILE.write_text(json.dumps(_gudang_harakat(), ensure_ascii=False), "utf-8")
+        data = g if g is not None else _gudang_harakat()
+        tmp = HARAKAT_CACHE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(dict(data), ensure_ascii=False), "utf-8")
+        tmp.replace(HARAKAT_CACHE_FILE)
     except Exception:
         pass
 
@@ -707,7 +723,7 @@ def terapkan_harakat(text: str) -> str:
 
 def _kerangka(t: str) -> str:
     """Huruf Arab saja (tanpa harakat, spasi & tanda baca) untuk membandingkan teks asli dan hasil AI."""
-    return re.sub(r"[^\u0621-\u064A]", "", normalize_text(t))
+    return re.sub(r"[^ء-ي]", "", normalize_text(t))
 
 
 def _harakat_sah(asli: str, hasil: str) -> bool:
@@ -733,29 +749,46 @@ def _kelompokkan(items):
         yield batch
 
 
+def _susun_model_harakat(tersedia) -> list:
+    """Urutan model untuk harakat dari daftar model yang BENAR-BENAR tersedia di akun Groq."""
+    tersedia = list(tersedia or [])
+    if not tersedia:
+        return list(HARAKAT_MODELS)
+    pilih = [m for m in HARAKAT_MODELS if m in tersedia]
+    pilih += sorted(m for m in tersedia if m not in pilih and not any(x in m.lower() for x in HARAKAT_TOLAK))
+    return pilih or list(HARAKAT_MODELS)
+
+
 def _model_harakat(api_key: str):
-    avail = available_models(api_key)
-    if not avail:
-        return HARAKAT_MODELS
-    pilih = [m for m in HARAKAT_MODELS if m in avail]
-    pilih += [m for m in avail if "kimi" in m.lower() and m not in pilih]
-    if not pilih:  # cadangan: model apa saja yang bukan model "reasoning"
-        pilih = [m for m in candidate_models(api_key) if not any(x in m.lower() for x in ("gpt-oss", "qwen3", "deepseek"))]
-    return pilih
+    return _susun_model_harakat(available_models(api_key))
 
 
 def _jeda_dari_galat(pesan: str) -> float:
-    """Baca 'try again in 1h2m3.5s' dari pesan batas Groq → detik (bawaan 5 menit)."""
-    m = re.search(r"try again in\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:([\d.]+)s)?", pesan)
+    """Baca 'try again in 1h2m3.5s' / 'try again in 850ms' dari pesan batas Groq → detik (bawaan 5 menit)."""
+    m = re.search(r"try again in\s*([\d.]+)\s*ms", pesan)
+    if m:
+        return float(m.group(1)) / 1000 + 2
+    m = re.search(r"try again in\s*(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:([\d.]+)s)?", pesan)
     if m and any(m.groups()):
         h, mnt, dt = (float(x) if x else 0.0 for x in m.groups())
         return h * 3600 + mnt * 60 + dt + 2
     return 300.0
 
 
-def _llm_harakat(client, models, batch, jeda=None) -> str:
+def _opsi_model(model: str) -> dict:
+    """Pengaturan khusus untuk model 'reasoning' agar langsung menulis jawaban tanpa berpikir panjang."""
+    m = model.lower()
+    if "gpt-oss" in m:
+        return {"reasoning_effort": "low"}
+    if "qwen3" in m:
+        return {"reasoning_effort": "none"}
+    return {}
+
+
+def _llm_harakat(client, models, batch, jeda=None, catatan=None) -> str:
     """Satu panggilan AI untuk satu kelompok potongan (aman dijalankan di thread terpisah).
-    'jeda' = {model: waktu_boleh_dipakai_lagi}; model yang kena batas dilewati sementara."""
+    'jeda'    = {model: waktu_boleh_dipakai_lagi}; model yang kena batas dilewati sementara.
+    'catatan' = dict untuk mencatat galat terakhir (ditampilkan di panel Kelola Materi)."""
     import time
     isi = "\n".join(f"[[{i}]] {t}" for i, t in enumerate(batch, 1))
     galat = None
@@ -768,20 +801,27 @@ def _llm_harakat(client, models, batch, jeda=None) -> str:
                 messages=[{"role": "system", "content": SYSTEM_HARAKAT}, {"role": "user", "content": isi}],
                 temperature=0.0,
                 max_tokens=min(8000, int(sum(len(t) for t in batch) * 3) + 300),
+                **_opsi_model(model),
             )
             text = re.sub(r"<think>.*?</think>", "", resp.choices[0].message.content or "", flags=re.S).strip()
             if text:
+                if catatan is not None:
+                    catatan["model_terakhir"] = model
                 return text
         except Exception as e:  # model tidak tersedia / kena limit → coba model berikutnya
             galat = e
             pesan = str(e).lower()
-            if "invalid api key" in pesan or "401" in pesan:
+            if catatan is not None:
+                catatan["galat"] = f"{model}: {str(e)[:220]}"
+            if "invalid api key" in pesan or "invalid_api_key" in pesan or "401" in pesan:
                 break
             if jeda is not None:
-                if "429" in pesan or "rate limit" in pesan:
+                if "429" in pesan or "rate limit" in pesan or "rate_limit" in pesan:
                     jeda[model] = time.time() + _jeda_dari_galat(str(e))
-                elif "404" in pesan or "decommissioned" in pesan or "not found" in pesan:
-                    jeda[model] = time.time() + 86400
+                elif "reasoning_effort" in pesan or "unsupported" in pesan:
+                    jeda[model] = time.time() + 600  # pengaturan tidak didukung → lewati sebentar
+                elif "decommissioned" in pesan or "model_not_found" in pesan or "does not exist" in pesan:
+                    jeda[model] = time.time() + 6 * 3600  # model dihentikan → daftar model dibaca ulang nanti
                 else:
                     jeda[model] = time.time() + 60
     raise RuntimeError(f"Groq: {galat}")
@@ -812,9 +852,10 @@ def beri_harakat(items, progres=None, maks_panggilan=None) -> int:
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    jeda = pekerja_harakat()["jeda"]  # berbagi catatan batas dengan pekerja latar belakang
     beres = 0
     with ThreadPoolExecutor(max_workers=HARAKAT_PARALEL) as ex:
-        tugas = {ex.submit(_llm_harakat, client, models, b): b for b in batches}
+        tugas = {ex.submit(_llm_harakat, client, models, b, jeda): b for b in batches}
         for f in as_completed(tugas):
             batch = tugas[f]
             beres += 1
@@ -835,7 +876,7 @@ def beri_harakat(items, progres=None, maks_panggilan=None) -> int:
                         gagal[k] = gagal.get(k, 0) + 1
             if progres:
                 progres(beres / len(batches))
-    _simpan_gudang()
+    _simpan_gudang(g)
     return sum(1 for t in sisa if masih(t))
 
 
@@ -858,14 +899,38 @@ def _urutan_kerja(docs):
         items += kumpulkan_arab(d["sub"]) + kumpulkan_arab(d["source"])
         meta, _ = split_header(d["text"])
         items += kumpulkan_arab("\n".join(meta.values()))
-    for d in sorted(docs, key=lambda d: (d["cat"] not in ("mosi", "ibarah", "kosakata"), len(d["text"]))):
+    for d in sorted(docs, key=lambda d: (d["cat"] not in ("mosi", "ibarah", "kosakata", "muqaddimah"), len(d["text"]))):
         items += kumpulkan_arab(d["text"])
     return list(dict.fromkeys(items))
 
 
-def _simpan_ke_github(cfg: dict, data: dict, status: dict):
+def _gabung_dari_github(cfg: dict, g: dict):
+    """Saat pekerja mulai: ambil harakat_cache.json terbaru dari GitHub, agar progres sebelumnya tidak hilang."""
+    import base64
+    import requests
+
+    url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+    kepala = {"Authorization": f"Bearer {cfg['token']}", "Accept": "application/vnd.github.raw+json"}
+    try:
+        r = requests.get(url, headers=kepala, params={"ref": cfg["branch"]}, timeout=60)
+        if r.status_code == 200:
+            try:
+                data = r.json()
+                if isinstance(data, dict) and "content" in data and "sha" in data:  # bukan format mentah
+                    data = json.loads(base64.b64decode(data["content"]).decode("utf-8"))
+            except Exception:
+                data = json.loads(r.text)
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    g.setdefault(k, v)
+    except Exception:
+        pass
+
+
+def _simpan_ke_github(cfg: dict, data: dict, status: dict) -> bool:
     """Simpan harakat_cache.json ke repository GitHub (butuh GITHUB_TOKEN & GITHUB_REPO di Secrets)."""
     import base64
+    import time
     import requests
 
     url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
@@ -873,18 +938,18 @@ def _simpan_ke_github(cfg: dict, data: dict, status: dict):
     try:
         lama = requests.get(url, headers=kepala, params={"ref": cfg["branch"]}, timeout=30)
         sha = lama.json().get("sha") if lama.status_code == 200 else None
-        isi = base64.b64encode(json.dumps(data, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        isi = base64.b64encode(json.dumps(dict(data), ensure_ascii=False).encode("utf-8")).decode("ascii")
         body = {"message": f"Harakat otomatis: {len(data):,} potongan", "content": isi, "branch": cfg["branch"]}
         if sha:
             body["sha"] = sha
-        r = requests.put(url, headers=kepala, json=body, timeout=60)
+        r = requests.put(url, headers=kepala, json=body, timeout=90)
         if r.status_code in (200, 201):
-            import time
-            status["github"] = f"tersimpan ke GitHub ({time.strftime('%d-%m %H:%M')} UTC)"
-        else:
-            status["github"] = f"gagal menyimpan ke GitHub (kode {r.status_code}: {r.text[:120]})"
+            status["github"] = f"tersimpan ke GitHub ({time.strftime('%d-%m %H:%M')} UTC, {len(data):,} potongan)"
+            return True
+        status["github"] = f"gagal menyimpan ke GitHub (kode {r.status_code}: {r.text[:120]})"
     except Exception as e:
         status["github"] = f"gagal menyimpan ke GitHub ({e})"
+    return False
 
 
 def _jalankan_pekerja(state: dict, g: dict, gagal: dict, api_key: str, cfg_github: dict):
@@ -892,25 +957,31 @@ def _jalankan_pekerja(state: dict, g: dict, gagal: dict, api_key: str, cfg_githu
     import time
     from concurrent.futures import ThreadPoolExecutor
 
-    status = state["status"]
+    status, jeda = state["status"], state["jeda"]
     try:
         from groq import Groq
         client = Groq(api_key=api_key)
-        try:
-            ada = {m.id for m in client.models.list().data}
-            models = [m for m in HARAKAT_MODELS if m in ada] + sorted(m for m in ada if "kimi" in m.lower() and m not in HARAKAT_MODELS)
-        except Exception:
-            models = list(HARAKAT_MODELS)
-        models = models or list(HARAKAT_MODELS)
     except Exception as e:
         status["keadaan"] = f"berhenti: {e}"
         return
-    jeda = {}
+    if cfg_github:
+        status["keadaan"] = "mengambil hasil harakat sebelumnya dari GitHub"
+        _gabung_dari_github(cfg_github, g)
+
+    models, waktu_model = [], 0.0
     docs_lama, items = None, []
     terakhir_simpan = time.time()
     perubahan = 0
     while True:
         try:
+            if not models or time.time() - waktu_model > HARAKAT_SEGARKAN_MODEL or state.get("segarkan"):
+                state["segarkan"] = False
+                try:
+                    models = _susun_model_harakat(m.id for m in client.models.list().data)
+                except Exception:
+                    models = models or list(HARAKAT_MODELS)
+                waktu_model = time.time()
+                status["model"] = ", ".join(models)
             if state["docs"] is not docs_lama:  # ada materi baru → susun ulang antrean
                 docs_lama = state["docs"]
                 items = _urutan_kerja(docs_lama)
@@ -918,21 +989,25 @@ def _jalankan_pekerja(state: dict, g: dict, gagal: dict, api_key: str, cfg_githu
             status.update(total=len(items), selesai=len(items) - len(sisa))
             if not sisa:
                 status["keadaan"] = "selesai — semua teks Arab sudah berharakat"
-                if perubahan and cfg_github:
-                    _simpan_ke_github(cfg_github, g, status)
+                if perubahan and cfg_github and _simpan_ke_github(cfg_github, g, status):
                     perubahan = 0
                 time.sleep(120)
                 continue
             aktif = [m for m in models if jeda.get(m, 0) <= time.time()]
             if not aktif:
-                tunggu = max(5.0, min(jeda.values()) - time.time())
+                tunggu = max(5.0, min(jeda.get(m, 0) for m in models) - time.time())
                 status["keadaan"] = f"menunggu batas AI Groq pulih (±{int(tunggu // 60)} menit)"
-                time.sleep(min(tunggu, 600))
+                if perubahan and cfg_github and _simpan_ke_github(cfg_github, g, status):
+                    terakhir_simpan, perubahan = time.time(), 0
+                # tidur sebentar-sebentar agar tombol "Coba lagi sekarang" langsung berpengaruh
+                akhir = time.time() + min(tunggu, 600)
+                while time.time() < akhir and not state.get("segarkan"):
+                    time.sleep(5)
                 continue
-            status["keadaan"] = "sedang memberi harakat"
+            status["keadaan"] = f"sedang memberi harakat ({len(aktif)} model siap)"
             batches = list(_kelompokkan(sisa[: HARAKAT_PARALEL * 10]))[:HARAKAT_PARALEL]
             with ThreadPoolExecutor(max_workers=HARAKAT_PARALEL) as ex:
-                hasil_semua = list(ex.map(lambda b: _coba_batch(client, aktif, b, jeda), batches))
+                hasil_semua = list(ex.map(lambda b: _coba_batch(client, aktif, b, jeda, status), batches))
             for batch, raw in zip(batches, hasil_semua):
                 if not raw:
                     continue
@@ -945,19 +1020,19 @@ def _jalankan_pekerja(state: dict, g: dict, gagal: dict, api_key: str, cfg_githu
                         perubahan += 1
                     else:
                         gagal[k] = gagal.get(k, 0) + 1
-            _simpan_gudang()
-            if cfg_github and perubahan and time.time() - terakhir_simpan > 1800:  # simpan ke GitHub tiap 30 menit
-                _simpan_ke_github(cfg_github, g, status)
-                terakhir_simpan, perubahan = time.time(), 0
+            _simpan_gudang(g)
+            if cfg_github and perubahan and time.time() - terakhir_simpan > HARAKAT_SIMPAN_GITHUB:
+                if _simpan_ke_github(cfg_github, g, status):
+                    terakhir_simpan, perubahan = time.time(), 0
             time.sleep(1)
         except Exception as e:  # jangan sampai pekerja mati karena satu galat
             status["keadaan"] = f"galat sementara: {e}"
             time.sleep(60)
 
 
-def _coba_batch(client, models, batch, jeda):
+def _coba_batch(client, models, batch, jeda, catatan=None):
     try:
-        return _llm_harakat(client, models, batch, jeda)
+        return _llm_harakat(client, models, batch, jeda, catatan)
     except Exception:
         return None
 
@@ -965,7 +1040,9 @@ def _coba_batch(client, models, batch, jeda):
 @st.cache_resource(show_spinner=False)
 def pekerja_harakat():
     """Status & data bersama pekerja latar belakang (dibuat sekali per server)."""
-    return {"docs": None, "status": {"keadaan": "belum berjalan", "total": 0, "selesai": 0, "github": ""}, "thread": None}
+    return {"docs": None, "jeda": {}, "segarkan": False, "thread": None,
+            "status": {"keadaan": "belum berjalan", "total": 0, "selesai": 0, "github": "", "model": "",
+                       "model_terakhir": "", "galat": ""}}
 
 
 def mulai_pekerja_harakat(docs):
@@ -973,6 +1050,7 @@ def mulai_pekerja_harakat(docs):
     import threading
 
     state = pekerja_harakat()
+    state.setdefault("jeda", {})
     state["docs"] = docs
     th = state.get("thread")
     if th is not None and th.is_alive():
@@ -1001,14 +1079,14 @@ def persen_harakat(text: str) -> float:
     return 100.0 * sum(1 for t in items if _kunci(t) in g) / len(items)
 
 
-def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER"), ekstra=(), maks_panggilan: int = 8) -> dict:
-    """Pastikan teks Arab di jawaban / terjemahan AI (dan teks pendukungnya) berharakat lengkap."""
+def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER"), ekstra=(), maks_panggilan: int = 3) -> dict:
+    """Pastikan teks Arab di jawaban / terjemahan AI berharakat lengkap.
+    'ekstra' (mis. cuplikan materi) TIDAK lagi dikirim ke AI: cuplikan memakai hasil pekerja latar belakang,
+    supaya jatah harian AI Groq tidak habis oleh chat."""
     items = []
     for b in bagian:
         if b != "SUMBER":
             items += kumpulkan_arab(parsed.get(b, ""))
-    for t in ekstra:
-        items += kumpulkan_arab(t)
     if items:
         try:
             beri_harakat(items, maks_panggilan=maks_panggilan)
@@ -2121,19 +2199,31 @@ def page_profile():
 
 
 def panel_harakat_admin(kb):
-    """Status harakat otomatis (hanya informasi, tidak perlu tombol atau unduhan)."""
+    """Status harakat otomatis + tombol untuk mencoba lagi bila pekerja sedang menunggu."""
     st.markdown("<div class='subhead' style='margin-top:2rem'>Harakat otomatis</div>", unsafe_allow_html=True)
-    stt = pekerja_harakat()["status"]
+    state = pekerja_harakat()
+    stt = state["status"]
     total = stt.get("total") or 0
     selesai = stt.get("selesai") or 0
     if total:
         st.progress(selesai / total, text=f"{selesai:,} dari {total:,} potongan teks Arab sudah berharakat")
     st.caption(f"Keadaan: {stt.get('keadaan', '-')}" + (f" · GitHub: {stt['github']}" if stt.get("github") else ""))
+    if stt.get("model"):
+        st.caption(f"Model yang dipakai: {stt['model']}" +
+                   (f" · terakhir berhasil: {stt['model_terakhir']}" if stt.get("model_terakhir") else ""))
+    if stt.get("galat"):
+        st.caption(f"Galat terakhir dari Groq: {stt['galat']}")
+    if st.button("Coba lagi sekarang", help="Hapus jeda model & hitungan gagal, lalu baca ulang daftar model Groq."):
+        state["jeda"].clear()
+        _gagal_harakat().clear()
+        state["segarkan"] = True
+        mulai_pekerja_harakat(kb["docs"])
+        st.success("Pekerja harakat dijalankan ulang. Muat ulang halaman ini beberapa menit lagi untuk melihat progres.")
     if not (_secret("GITHUB_TOKEN") and _secret("GITHUB_REPO")):
         st.info(
             "Agar hasil harakat **permanen** (tidak hilang saat aplikasi di-restart), isi di **Settings → Secrets**:\n\n"
             "`GITHUB_TOKEN = \"token_github_anda\"`  \n`GITHUB_REPO = \"nama-akun/nama-repo\"`\n\n"
-            "Hasil harakat lalu tersimpan otomatis ke GitHub setiap 30 menit."
+            "Hasil harakat lalu tersimpan otomatis ke GitHub setiap 10 menit."
         )
 
 
