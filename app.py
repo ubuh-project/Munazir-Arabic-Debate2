@@ -26,6 +26,16 @@ APP_DIR = Path(__file__).parent
 DATA_DIR = APP_DIR / "data"
 EXTS = {".txt", ".md", ".pdf", ".docx"}
 
+# ── ISTILAH POI (dipakai seragam di seluruh website) ──
+# Istilah Arab resmi MUNAZIR untuk POI. Buku sumber (Al-Murshed, Booklet QD, slide QatarDebate)
+# memakai  الْمُدَاخَلَة  untuk konsep yang sama; teks kutipan buku TIDAK diubah, tetapi diberi catatan.
+ISTILAH_POI = "نُقْطَةُ الاِسْتِشَارَةِ"
+LABEL_POI = f"POI ({ISTILAH_POI})"
+CATATAN_POI = (
+    f"**Catatan istilah:** di MUNAZIR, POI disebut **{ISTILAH_POI}**. "
+    "Sumber ini memakai istilah **الْمُدَاخَلَةُ** (jamak: **الْمُدَاخَلَاتُ**) untuk konsep yang sama."
+)
+
 CATEGORIES = {
     "sistem_debat": {
         "warna": "#A57A2C",
@@ -33,7 +43,7 @@ CATEGORIES = {
         "label": "Kumpulan Sistem Debat",
         "ar": "أَنْظِمَةُ الْمُنَاظَرَةِ",
         "icon": "",
-        "desc": "Teori & format Qatar Debate: posisi tim, peran pembicara, argumen, sanggahan, POI, gaya, penjurian, latihan.",
+        "desc": f"Teori & format Qatar Debate: posisi tim, peran pembicara, argumen, sanggahan, {LABEL_POI}, gaya, penjurian, latihan.",
     },
     "mosi": {
         "warna": "#4E6B58",
@@ -152,6 +162,7 @@ PREFERRED_MODELS = [
     "llama-3.1-8b-instant",
 ]
 BLOCKED_MODEL_WORDS = ("whisper", "guard", "tts", "playai", "orpheus", "compound", "distil", "safeguard")
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -364,6 +375,9 @@ def search(kb, query: str, k: int = 6, cats=None, min_score: float = 0.04):
     if not kb["chunks"] or not query.strip():
         return []
     query = clean_query(query)
+    if re.search(r"\bpoi\b|interupsi|interruption|point of information", query, re.I) or "شار" in normalize_text(query) \
+            or "مداخل" in normalize_text(query):
+        query += " POI نقطة الاستشارة المداخلة المداخلات"
     scores = (kb["mat"] @ kb["vec"].transform([query]).T).toarray().ravel()
     if kb.get("wvec") is not None:  # gabungan pencarian huruf (char) + kata (word)
         scores = 0.5 * scores + 0.5 * (kb["wmat"] @ kb["wvec"].transform([query]).T).toarray().ravel()
@@ -465,6 +479,9 @@ ATURAN:
    Jika konteks tidak memuat teks Arab yang relevan, tulis "-".
 5. Bagian SUMBER berisi nama file materi yang benar-benar dipakai, dipisahkan koma. Tulis "-" jika tidak ada.
 6. Setiap kata atau istilah Arab yang muncul di bagian JAWABAN juga WAJIB diberi harakat lengkap.
+7. ISTILAH POI: di MUNAZIR, istilah Arab untuk POI (Point of Information) adalah نُقْطَةُ الاِسْتِشَارَةِ.
+   Di bagian JAWABAN selalu gunakan istilah ini. Jika konteks memakai الْمُدَاخَلَةُ / الْمُدَاخَلَاتُ,
+   jelaskan bahwa itu sebutan lain untuk POI yang sama. Di bagian ARAB, kutipan dari konteks tetap apa adanya.
 
 FORMAT WAJIB (gunakan penanda persis seperti ini):
 [JAWABAN]
@@ -480,6 +497,7 @@ Jangan menjawab pertanyaannya. Jangan beri penjelasan."""
 
 SYSTEM_TRANSLATE = """Kamu adalah penerjemah ahli bahasa Indonesia ⇄ bahasa Arab fusha, khusus konteks debat (munazarah).
 Jika GLOSARIUM diberikan, utamakan istilah baku dari glosarium tersebut.
+Istilah POI (Point of Information/interupsi dalam debat) SELALU diterjemahkan menjadi نُقْطَةُ الاِسْتِشَارَةِ.
 Terjemahkan secara akurat, alami, dan sesuai gaya bahasa debat formal.
 Setiap teks Arab yang kamu tulis (hasil terjemahan maupun istilah di catatan) WAJIB diberi harakat (syakal) lengkap dan benar.
 
@@ -704,8 +722,30 @@ def _ganti_bagian(b: str, g: dict) -> str:
     return "".join(out)
 
 
+_H = "[\u064B-\u0652\u0670]*"  # harakat opsional di antara huruf
+# "نقطة الاستشار" (tanpa tā' marbūṭah, dengan/tanpa harakat) → kata keduanya diganti bentuk baku الاِسْتِشَارَةِ.
+# Kata pertama (نقطة) tidak disentuh, agar harakat akhirnya (i'rab) tetap sesuai kalimat.
+POI_SALAH = re.compile(
+    "(ن" + _H + "ق" + _H + "ط" + _H + "[ةه]" + _H + "\\s+)"
+    + "[اٱإ]" + _H + "ل" + _H + "[اٱإ]" + _H + "س" + _H + "ت" + _H + "ش" + _H + "ا" + _H + "ر" + _H
+    + "(?![ةهت\u0621-\u064A])"
+)
+ADA_MUDAKHALAH = re.compile("م" + _H + "د" + _H + "ا" + _H + "خ" + _H + "ل" + _H + "(?:[ةه]|ات)")
+
+
+def seragamkan_poi(text: str) -> str:
+    """Samakan penulisan istilah POI: نقطة الاستشار → نقطة الاِسْتِشَارَةِ."""
+    if not text or "ش" not in text:
+        return text or ""
+    return POI_SALAH.sub(lambda m: m.group(1) + "الاِسْتِشَارَةِ", text)
+
+
 def terapkan_harakat(text: str) -> str:
     """Ganti teks Arab dengan versi berharakat yang sudah ada di gudang (tanpa memanggil AI)."""
+    return seragamkan_poi(_terapkan_harakat(text))
+
+
+def _terapkan_harakat(text: str) -> str:
     g = _gudang_harakat()
     if not g or not text:
         return text or ""
@@ -1645,6 +1685,8 @@ def pilih_materi(key: str, i: int):
 def siapkan_harakat_materi(doc) -> str:
     """Tampilkan materi dengan harakat yang sudah ada — TANPA menunggu (harakat dibuat otomatis di latar belakang)."""
     teks = doc["text"]
+    if ADA_MUDAKHALAH.search(teks):
+        st.caption(CATATAN_POI)
     persen = persen_harakat(teks)
     if persen < 100:
         st.caption(f"Harakat materi ini sedang dilengkapi otomatis di latar belakang ({persen:.0f}% selesai). "
@@ -1789,7 +1831,7 @@ def page_home(kb):
         )
 
     langkah = [
-        ("Pahami sistem debat", "Peran pembicara, POI, dan cara juri menilai.", "فَهْمُ النِّظَامِ"),
+        ("Pahami sistem debat", f"Peran pembicara, {LABEL_POI}, dan cara juri menilai.", "فَهْمُ النِّظَامِ"),
         ("Bedah mosi", "Kenali jenis mosi, definisi, dan beban pembuktian.", "تَحْلِيلُ الْقَضِيَّةِ"),
         ("Kuasai ibarah & kosakata", "Ungkapan untuk berargumen, menyanggah, dan bertanya.", "إِتْقَانُ الْعِبَارَاتِ"),
         ("Latihan berpidato", "Susun muqaddimah, lalu berlatih dengan Timer Debat.", "التَّدْرِيبُ عَلَى الْإِلْقَاءِ"),
@@ -1933,7 +1975,7 @@ def page_category(cat: str, kb):
                 render_doc(teks, kitab=(mode == "Kertas"), ukuran=ukuran)
 
     with t2:
-        q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, POI …")
+        q = st.text_input("Kata kunci (Indonesia / Arab):", key=f"search_{cat}", placeholder="contoh: sanggahan, حُجَّةٌ, نُقْطَةُ الاِسْتِشَارَةِ …")
         if q:
             hits = search(kb, q, k=10, cats=[cat], min_score=0.02)
             if not hits:
@@ -2127,7 +2169,7 @@ render();
 
 def page_timer():
     page_header("Timer Debat", "مُؤَقِّتُ الْمُنَاظَرَةِ",
-                "Untuk latihan dan simulasi lomba: urutan pembicara, sisa waktu, dan kapan POI boleh diajukan.", "Alat")
+                f"Untuk latihan dan simulasi lomba: urutan pembicara, sisa waktu, dan kapan {LABEL_POI} boleh diajukan.", "Alat")
     c1, c2, _ = st.columns([1, 1, 2])
     utama = c1.number_input("Pidato utama (menit)", min_value=1, max_value=15, value=7, key="t_utama")
     balasan = c2.number_input("Pidato balasan (menit)", min_value=1, max_value=10, value=4, key="t_balasan")
