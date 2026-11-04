@@ -1,0 +1,38 @@
+JUDUL: Kata Pengantar, Profil Penyusun & Pedoman Transliterasi
+MENU: Kumpulan Sistem Debat › 01 Pengantar & Jenis Debat (المناظرة وأنواعها)
+SUMBER: MIZAN – Buku Saku Digital Debat Bahasa Arab (Muhamad Subhi, Yogyakarta 2026) – Pendahuluan
+========================================
+
+KATA PENGANTAR
+بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ، وَالصَّلَاةُ وَالسَّلَامُ عَلَى أَشْرَفِ الْأَنْبِيَاءِ وَالْمُرْسَلِينَ، نَبِيِّنَا مُحَمَّدٍ وَعَلَى آلِهِ وَصَحْبِهِ أَجْمَعِينَ. أَمَّا بَعْدُ
+Debat bukan sekadar ajang pertukaran pendapat, melainkan sarana ilmiah untuk melatih penalaran kritis, retorika, dan struktur berpikir logis, khususnya dalam diskursus bahasa Arab.
+Buku saku digital ini hadir sebagai panduan praktis bagi para munāẓir (debater) dan pegiat klub debat bahasa Arab khususnya dalam format Qatar Debate. Buku ini merangkum sistem debat, teknik argumentasi, tata cara sanggahan dan POI, serta dilengkapi dengan bank mosi, ibārah pilihan, dan perbendaharaan kosakata strategis.
+Semoga buku saku ini dapat menjadi navigasi yang memudahkan pembelajar bahasa Arab untuk tampil percaya diri, fasih, dan argumentatif.
+Yogyakarta, 2026
+Muhamad Subhi
+PROFIL PENYUSUN
+Muhamad Subhi lahir di Narmada, Lombok Barat pada 10 Oktober 1996. Saat ini, ia tengah menempuh pendidikan tingkat Magister (S2) dalam program studi Pendidikan Bahasa Arab di Universitas Islam Negeri (UIN) Sunan Kalijaga Yogyakarta.
+Berangkat dari kecintaan pada dunia kebahasaan dan pedagogi, ia aktif mendalami kajian fonologi, pengembangan media pembelajaran digital, serta struktur argumentasi formal, termasuk sistem dan metodologi Qatar Debate. Melalui penyusunan buku saku digital MIZAN ini, ia berdedikasi untuk menghadirkan panduan praktis yang memudahkan para pelajar, santri, dan mahasiswa (munāẓir) dalam menguasai seni debat bahasa Arab secara sistematis, komunikatif, dan berbasis penalaran logis.
+MOTO
+“Kekuatan sebuah argumen bukan terletak pada seberapa keras suara anda, melainkan pada ketepatan penalaran dan ketahanannya di hadapan kritik”
+PEDOMAN TRANSLITERASI
+Pedoman untuk transliterasi Arab-Latin ini mengikuti Keputusan Bersama Menteri Agama dan Menteri Pendidikan dan Kebudayaan Republik Indonesia Nomor 158/1987 dan Nomor 0543b/U/1987 tentang Pedoman Transliterasi Arab-Latin
+Huruf Arab yang berfungsi sebagai konsonan ditransliterasi mengikuti tabel berikut:
+Tabel 1. Huruf Arab Konsonan
+Huruf Arab | Latin | Huruf Arab | Latin
+ا | - | ط | ṭ
+ب | b | ظ | ẓ
+ت | t | ع | ‘
+ث | ṡ | غ | g
+ج | j | ف | f
+ح | ḥ | ق | q
+خ | kh | ك | k
+د | d | ل | l
+ذ | ż | م | m
+ر | r | ن | n
+ز | z | و | w
+س | s | ه | h
+ش | sy | ي | y
+ص | ṣ
+
+Vokal pendek berupa fatḥah, kasrah, dan ḍammah ditulis a, i, dan u, sedangkan vokal panjang masing-masing ditulis ā, ī, dan ū. Diftong aw dan ay ditulis sesuai bunyinya. Ta’ marbūṭah bila berharakat hidup ditransliterasi sebagai t, dan bila mati sebagai h. Syaddah ditulis dengan penggandaan huruf (ummat), sedangkan kata sandang al- selalu ditulis apa adanya, baik bertemu huruf qamariyyah maupun syamsiyyah; hanya saja pada huruf syamsiyyah huruf berikutnya digandakan (misalnya: al-rajul, al-syams). Hamzah di tengah atau akhir kata ditulis dengan apostrof (’), sedangkan di awal kata tidak dilambangkan. Kata dalam bahasa Arab ditulis terpisah sesuai dengan ejaan aslinya, kecuali bentuk konstruksi (iḍāfah) yang ditulis sesuai kaidah transliterasi dan tata bahasa.

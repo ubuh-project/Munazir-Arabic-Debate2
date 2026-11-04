@@ -1,0 +1,252 @@
+JUDUL: Critical Thinking
+MENU: Kumpulan Sistem Debat › 05 Membangun Argumen (بناء الحجة)
+SUMBER: QatarDebate Booklet 2 – Debaters (bahasa Inggris) – hlm. PDF 16–24
+========================================
+
+Critical Thinking
+
+Critical Thinking
+At the heart of debating is critical thinking and argumentation. This fundamental skill equips debaters with the ability to engage with a range of different topics and discuss them in a coherent way. To be a good critical thinker, you must be able to listen carefully to what is presented to you, think about it carefully and internalize the ideas. In this sense, critical thinking is a skill that helps people to understand and engage with a concept or idea.
+Let’s try to understand critical thinking first. Critical thinking means making reasoned judgments that are logical and well thought out. It is a way of thinking in which you don't simply accept all arguments and conclusions you are exposed to but rather have an attitude involving questioning such arguments and conclusions. It requires wanting to see what evidence is involved to support a particular argument or conclusion. People who use critical thinking are the ones who say things such as, 'How do you know that?
+Is this conclusion based on evidence or gut feelings?' and 'Are there alternative possibilities when given new pieces of information?' Mindset of Critical Thinker
+- Logical: Logic is the foundation of critical thinking. Dating back to Socrates and the early philosophical model of questioning and reasoning, logic requires that you examine all premises and factual claims before drawing conclusions. In the workplace, you should strive to set aside other factors that affect your thinking and logically analyze the facts and information before you.
+- Open-Minded: A hallmark of critical thinking is remaining open to all ideas,
+
+Critical Thinking
+
+regardless of your own biases or prior assumptions. Practice temporarily shelving your established thinking to stay open to new ideas and information that could enhance your work and productivity. Be willing to remain flexible and open-minded when new information or ideas arise.
+- Curios - Merriam-Webster Dictionary defines curiosity as “interest leading to inquiry,” a key idea for the practice of critical thinking. Approaching a new situation, new information with curiosity allows you to be open to the process of inquiry and critical thinking.
+Fact or Opinion
+According to Webster's Dictionary a fact is "anything that is done or happens; anything actually existent; any statement strictly true; truth; reality."
+Three examples of facts that are concrete and that could be documented include:
+1. The house was painted on October 2019 ,1.
+2. Today is Friday.
+3. My daughter had a temperature of thirty-nine degrees this morning.
+A fact is a statement that can be verified by scientific process. Whereas an opinion is defined as "indicating a belief, view, sentiment, conception."
+For example, how the three facts above can be changed to opinions would be to add a belief or view. For example:
+1. The house was painted recently on October 2019 ,1, so it looks as good as new.
+2. Today is Friday and Ali always sleeps in on Fridays, so that is why he is late
+
+Critical Thinking
+
+for the game.
+3. There was no way for me to go to work because my daughter had a temperature of one thirty-nine degrees this morning.
+Sometimes it is challenging to tell the facts and opinions apart. For example, is “Jalal ad-Din Rumi was the most eloquent poet ever." a fact or an opinion?
+This is an opinion, but you must know that eloquent is a descriptive word to for this to become clear. Descriptive words are subjective, or state someone's opinion. It can become unclear how to separate fact and opinion when many people hold the same opinion. This is when it becomes important to understand what the word bias means.
+Another important aspect in critical thinking is to understand assumptions or biases. A bias is an opinion or an attitude we have for or against something.
+A bias usually stems from our feelings rather than from rational thought.
+What is very important to realize is that all of us are biased. We are biased for or against certain people, activities, and ideas. Many of our biases are not based on fact or reasoned judgment but on opinions handed down to us by parents, teachers, and society. Unfortunately, we do not always take the time to examine the source of our biases, and many of us carry prejudices because of it. To start examining the source of biases in and around us and develop the ability to think critically, we need to understand the logical formation of an argument. That will enable us to form and adjudicate ideas and opinions in a way that is much less deceiving and much more rational or logical.
+
+Critical Thinking
+
+Introduction to Logic, Truth, Validity
+• The foundation-concepts of deductive logic are explained--truth, validity, and soundness.
+• An argument is the combination of supporting statements (premises) that someone claims results in the truth of a conclusion.
+• Validity and truth are very separate in logic. “Valid” describes the relationship between multiple statements, and truth/falsity only applies to individual premises.
+• If an argument is both valid and all its premises are true, it’s a “sound”
+argument.
+How do you determine an argument to be true?
+• With formal logic, you are meant to reach a conclusion from the premises, step by step. The conclusion should necessarily follow from the premises.
+• The truth of an argument’s premises should naturally lead to the truth of its conclusion.
+• For example, “If someone is shorter than 5ft., then they absolutely can’t ride this ride. Ahmad is shorter than 5ft. In conclusion, Ahmad can’t ride this ride.”
+What is a Valid Argument?
+If an argument’s conclusion must be true if its premises are true, then it is a valid argument.
+In the example above, there is no way to argue against the premises. If the two premises are true, it must be a fact that Ahmad can’t ride the ride. When you must accept the conclusion based on the premises, we can say the argument is “valid.”
+
+Critical Thinking
+
+If we take another example:
+Premise
+
+: If Sara wins the raffle tonight, she could be a millionaire.
+
+Premise
+
+: Sara didn’t win the raffle.
+
+Conclusion : Sara can’t be a millionaire.
+Assuming that the premises are true, does that have to mean that Sara can’t be a millionaire? Not necessarily, there are many other ways Sara could have become a millionaire (inheritance, work, etc.)
+
+Truth
+
+Sound Argument
+
+Validity
+
+- Truth is a property of
+statements (i.e.,
+premises and
+conclusion)
+
+An argument which is
+valid and has true
+premises is said to be
+sound (adjective) or
+have the property of
+soundness (noun).
+
+An argument is valid
+when the conclusion
+follows logically from
+the premises.
+
+- Each of the
+statements must be
+true to meet the truth
+condition.
+
+Critical Thinking
+
+Some Logical Fallacies
+• Ad hominem: attacking the person, not the argument (i.e., Bush was a bad president, therefore his environmental policy was bad)
+• Hasty Generalization: there are not enough examples, so a conclusion is jumped to (“Poor people aren’t good at making financial decisions.”)
+• Begging the question also known as circular reasoning, when an argument requires that the desired conclusion be true (i.e., “This is against the law because it’s wrong; I know it’s wrong because it is against the law.”)
+• Bandwagon Appeals: getting people to do or think something because “everyone else is doing it” or “everything else thinks this.” (i.e., “Everyone at school thinks I-phones are the best. They must be the best.”)
+• Confusing Cause and Effect: something is assumed to be the cause of an event merely because it happened simultaneously (i.e., She got sick after she visited China, so something in China caused her sickness)
+• Appeal to ignorance: something must be true, simply because it hasn't been proved false (i.e., No one has yet proven that the horoscope does not influence people’s lives, hence it must work)
+• Straw man: misrepresent someone else's position so that it can be attacked more easily, knock down that misrepresented position, then conclude that the original position has been demolished (proponents of tying economic aid to human rights would let starving children die)
+• Slippery Slope: If something happens, it will lead to an extreme hypothetical situation. No proof is presented to show that such extreme hypotheticals will in fact occur (i.e., "We have to stop the tuition increase! The next thing you know, they will be charging 40,000$ a semester!")
+
+Critical Thinking
+
+logical Fallacy
+
+Meaning
+
+Example
+
+Ad Hominem
+
+Attacking the person,
+not the argument.
+
+i.e. Bush was a bad
+president, therefore
+his environmental
+policy was bad.
+
+Hasty
+Generalization
+
+There are not enough
+examples, so a
+conclusion is jumped
+to.
+
+“Poor people aren’t
+good at making
+financial decisions.”
+
+Also known as circular
+reasoning when an
+argument requires
+that the desired
+conclusion be true.
+
+This is against the law
+because it’s wrong; I
+know it’s wrong
+because it is against
+the law.”
+
+Getting people to do
+or think something
+because “everyone
+else is doing it” or
+“everything else thinks
+this.”
+
+“Everyone at school
+thinks I-phones are
+the best. They must
+be the best.”
+
+Something is
+assumed to be the
+cause of an event
+merely because it
+happened
+simultaneously.
+
+i.e. She got sick after
+she visited China, so
+something in China
+caused her sickness.
+
+Begging the
+Question
+
+Bandwagon
+Appeals
+
+Confusing
+Cause and
+Effect
+
+Critical Thinking
+
+logical Fallacy
+
+Meaning
+
+Example
+
+Appeal to
+Ignorance
+
+Something must be
+true, simply because
+it hasn't been proven
+false.
+
+No one has yet
+proven that the
+horoscope does not
+have an effect on
+people’s lives, hence
+it must work.
+
+Straw Man
+
+Misrepresent
+someone else's
+position so that it can
+be attacked more
+easily, knock down
+that misrepresented
+position, then
+conclude that the
+original position has
+been demolished.
+
+proponents of tying
+economic aid to
+human rights would
+let starving children
+die.
+
+If something
+happens, it would
+lead to an extreme
+hypothetical situation.
+No proof is presented
+to show that such
+extreme
+hypotheticals will in
+fact occur.
+
+"We have to stop the
+tuition increase! The
+next thing you know,
+they will be charging
+40,000$ a semester!)".
+
+Slippery
+Slope
+
+Previous Chapter
+
+Critical Thinking
+
+Debate
+Format
