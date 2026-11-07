@@ -1161,7 +1161,7 @@ def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER"), ekstra=
 # ─────────────────────────────────────────────────────────────
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Sans:wght@400;500;600&family=Noto+Serif:wght@400;500&display=swap');
 
 /* ───────── Token desain ───────── */
 :root{
@@ -1173,8 +1173,10 @@ CSS = """
   --umber:#102A27; --umber-2:#163B32; --cream:#F4F0E7;
   --brass:#C6A15B; --brass-ink:#6B5526; --brass-soft:rgba(198,161,91,.16);
   /* Amiri disisipkan sebagai cadangan: huruf Arab di tombol, menu, dan isian ikut memakai Amiri */
-  --serif:'Newsreader', 'Amiri', Georgia, 'Times New Roman', serif;
-  --sans:'IBM Plex Sans', 'Amiri', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* 'Noto Serif'/'Noto Sans' dipasang sebagai cadangan karena Newsreader,
+     IBM Plex Sans, dan Georgia tidak memuat huruf Ẓ (titik di bawah). */
+  --serif:'Newsreader', 'Noto Serif', 'Amiri', Georgia, 'Times New Roman', serif;
+  --sans:'IBM Plex Sans', 'Noto Sans', 'Amiri', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --arab:'Amiri', 'Traditional Arabic', 'Times New Roman', serif;
   /* Judul Arab memakai khat ruq'ah; harakatnya dilepas lewat tanpa_harakat() */
   --arab-judul:'Aref Ruqaa', 'Amiri', 'Traditional Arabic', serif;
@@ -1375,7 +1377,30 @@ div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radiu
 [class*="st-key-ttsrow_"] [data-testid="stAudio"], [class*="st-key-ttsrow_"] audio{ width:100%; max-width:520px; }
 
 /* ───────── Beranda ───────── */
-.hero{ padding:.4rem 0 3rem; }
+/* Hero berlatar zamrud, seirama dengan pita ajakan di bawah halaman.
+   Seluruh tulisan di dalamnya dibalik jadi gading/emas. */
+.hero{ position:relative; background:var(--umber); color:var(--cream);
+  border-radius:16px; padding:clamp(1.4rem, 3.5vw, 2.4rem) clamp(1.2rem, 4vw, 2.8rem) clamp(1.8rem, 4vw, 2.8rem);
+  margin:.2rem 0 0; }
+.hero .eyebrow{ color:var(--brass); }
+.hero .hero-meta{ color:#9FB3A6; }
+.hero .rule-draw{ background:rgba(198,161,91,.5); }
+.hero .hero-ar{ color:var(--cream); }
+.hero .hero-arti{ color:var(--brass); }
+.hero .hero-lead{ color:#DCE7DF; }
+.hero .stats{ border-top-color:rgba(244,240,231,.18); }
+.hero .stats dt{ color:#9FB3A6; } .hero .stats dd{ color:var(--cream); }
+.hero .btn{ background:var(--brass); color:var(--umber) !important; }
+.hero .btn:hover{ background:#D7B673; }
+.hero .btn-ghost{ color:var(--cream) !important; }
+.hero .btn-ghost:hover{ color:var(--brass) !important; }
+.hero .mosi{ background:transparent; border-color:rgba(244,240,231,.22); }
+.hero .mosi-ar{ color:var(--cream); } .hero .mosi-id{ color:#DCE7DF; }
+.hero .mosi-no{ color:#9FB3A6; }
+.hero .tag{ color:var(--brass); border-color:rgba(198,161,91,.5); }
+/* Lambang logo punya latar krem sendiri; diberi bingkai emas agar
+   terbaca sebagai medali yang disengaja, bukan gambar tertempel. */
+.hero .hero-logo{ border-radius:14px; border:1px solid rgba(198,161,91,.55); }
 .hero-top{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; margin-bottom:1.2rem; }
 .hero-meta{ font-size:.82rem; color:var(--muted); }
 .hero-ar{ font-family:var(--arab-judul); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:2.05; word-spacing:.1em; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.6rem 0; }
@@ -2351,7 +2376,7 @@ def page_translate(kb):
 
 
 TIMER_HTML = """<!doctype html><html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Noto+Sans:wght@400;500;600&family=Noto+Serif:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{--paper:#F4F0E7;--paper2:#FFFFFF;--ink:#202824;--ink2:#3C4B44;--muted:#4A5A52;--rule:#DCE7DF;--umber:#102A27;--cream:#F4F0E7;--brass:#C6A15B;--poi:#7FA58A;--stop:#D46A5A;--pro:#4E6B58;--kon:#9B4E3A}
 *{box-sizing:border-box}
