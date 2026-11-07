@@ -1597,12 +1597,19 @@ def pilih_tts(kunci: str):
     st.session_state["tts_putar"] = kunci
 
 
+# Baris dianggap menutup satu paragraf bila berakhir di titik / tanda tanya / seru.
+AKHIR_KALIMAT = re.compile(r"[.؟!…۔][\"'»)\]\s]*$")
+MAKS_BARIS_BLOK = 12
+
+
 def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
                      asli: str = ""):
-    """Pembaca materi dengan tombol Dengarkan.
+    """Pembaca materi dengan tombol Dengarkan per paragraf utuh.
 
-    Rekaman dicari memakai teks ASLI dari berkas materi (parameter `asli`),
-    bukan teks yang sudah diberi harakat, karena kuncinya dibuat dari teks asli.
+    Berkas materi memotong kalimat panjang menjadi beberapa baris, jadi baris
+    digabung dulu sampai bertemu titik — satu tombol menyuarakan satu paragraf
+    utuh, bukan penggalan baris. Rekaman dicari memakai teks ASLI dari berkas
+    materi (parameter `asli`), bukan teks yang sudah diberi harakat.
     """
     meta, body = split_header(text)
     mode = "kitab" if kitab else "malam"
@@ -1616,35 +1623,51 @@ def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
         if len(kasar) == len(paras):
             sumber = kasar
 
-    kunci_paragraf = []
+    kunci_baris = []
     for p in sumber:
         ar = teks_untuk_audio(p)
-        kunci_paragraf.append(berkas_audio(ar) if ar else None)
-    tersedia = [k for k in kunci_paragraf if k]
+        kunci_baris.append(berkas_audio(ar) if ar else None)
+
+    # kelompokkan baris menjadi paragraf yang berakhir di titik
+    blok, tombol, grup, baris_akhir = [], {}, [], None
+    for i, p in enumerate(sumber):
+        if kunci_baris[i]:
+            grup.append(kunci_baris[i])
+            baris_akhir = i
+        if not grup:
+            continue
+        tutup = (not kunci_baris[i]
+                 or bool(AKHIR_KALIMAT.search(p))
+                 or len(grup) >= MAKS_BARIS_BLOK
+                 or i == len(sumber) - 1)
+        if tutup:
+            tombol[baris_akhir] = (len(blok), tuple(grup))
+            blok.append(tuple(grup))
+            grup, baris_akhir = [], None
 
     putar = st.session_state.get("tts_putar")
-    if tersedia:
+    if blok:
         with st.container(key=f"ttsall_{mode}_{cat}"):
-            st.button(f"Dengarkan seluruh materi · {len(tersedia)} bagian",
+            st.button(f"Dengarkan seluruh materi · {len(blok)} paragraf",
                       key=f"ttsallbtn_{mode}_{cat}", icon=":material/playlist_play:",
                       on_click=pilih_tts, args=(f"SEMUA_{cat}",))
             if putar == f"SEMUA_{cat}":
-                putar_rangkaian(tersedia)
+                putar_blok(tuple(blok))
 
     with st.container(height=640, border=False, key=f"bacaan_{mode}_{cat}"):
         if meta:
             st.markdown(f"<div class='doc {mode} doc-polos'>{_kepala_doc(meta)}</div>", unsafe_allow_html=True)
         for i, p in enumerate(paras):
             st.markdown(f"<div class='doc {mode} doc-polos'>{_paragraf_html(p, '', ukuran)}</div>", unsafe_allow_html=True)
-            k_audio = kunci_paragraf[i]
-            if not k_audio:
+            if i not in tombol:
                 continue
-            kunci = f"{cat}_{i}_{_kunci(p)[:10]}"
-            with st.container(key=f"ttsrow_{kunci}"):
-                st.button("Dengarkan", key=f"ttsbtn_{kunci}", icon=":material/volume_up:",
-                          on_click=pilih_tts, args=(kunci,))
+            nomor, grup_kunci = tombol[i]
+            kunci = f"{cat}_{nomor}"
+            with st.container(key=f"ttsrow_{mode}_{kunci}"):
+                st.button(f"Dengarkan paragraf {nomor + 1}", key=f"ttsbtn_{mode}_{kunci}",
+                          icon=":material/volume_up:", on_click=pilih_tts, args=(kunci,))
                 if putar == kunci:
-                    st.audio(baca_audio(k_audio), format="audio/mpeg", autoplay=True)
+                    putar_blok((grup_kunci,))
     if len(body) > limit:
         st.caption(f"… ditampilkan {limit:,} dari {len(body):,} karakter. Gunakan tab Cari / Tanya untuk bagian lainnya.")
 
@@ -1780,9 +1803,41 @@ def baca_audio(kunci: str) -> bytes:
         return z.read(nama)
 
 
-# Jeda sunyi 0,8 detik (MP3 mono 24 kHz) yang disisipkan antarparagraf
-# saat seluruh materi diputar, agar batas paragraf terdengar jelas.
-_JEDA_B64 = (
+# Dua potongan sunyi (MP3 mono 24 kHz): 0,22 detik untuk menyambung baris
+# di dalam satu kalimat, dan 0,8 detik untuk memisahkan antarparagraf.
+_JEDA_PENDEK_B64 = (
+    "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//OEwAAAAAAAAAAA"
+    "AEluZm8AAAAPAAAADAAABmAAMDAwMDAwMDBDQ0NDQ0NDQ1ZWVlZWVlZWaWlpaWlpaWlpfHx8fHx8"
+    "fHyPj4+Pj4+Pj6GhoaGhoaGhobS0tLS0tLS0x8fHx8fHx8fa2tra2tra2trt7e3t7e3t7f//////"
+    "////AAAAAExhdmM2MC4zMQAAAAAAAAAAAAAAACQEIAAAAAAAAAZgy50wPwAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAA//NUxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVV//NUxGsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVV//NUxJQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NUxJQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEw"
+    "MFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NUxJQAAANIAAAAAFVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxB"
+    "TUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NUxJQAAANIAAAAAFVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NUxJQAAANIAAAA"
+    "AFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//NUxJQA"
+    "AANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "//NUxJQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVV//NUxJQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVV//NUxJQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVV//NUxJQAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+    "VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+)
+_JEDA_PANJANG_B64 = (
     "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYwLjE2LjEwMAAAAAAAAAAAAAAA//OEwAAAAAAAAAAA"
     "AEluZm8AAAAPAAAAJAAAEaAAEREYGBgfHx8mJiYsLDMzMzo6OkFBQUhITk5OVVVVXFxcY2Njampx"
     "cXF3d3d+fn6FhYyMjJOTk5mZmaCgoKenrq6utbW1u7u7wsLJycnQ0NDX19fd3d3k5Ovr6/Ly8vn5"
@@ -1867,29 +1922,36 @@ _JEDA_B64 = (
 
 
 @st.cache_resource(show_spinner=False)
-def _jeda_mp3() -> bytes:
+def _jeda_mp3() -> tuple:
     import base64
-    return base64.b64decode(_JEDA_B64)
+    return base64.b64decode(_JEDA_PENDEK_B64), base64.b64decode(_JEDA_PANJANG_B64)
 
 
-@st.cache_data(show_spinner=False, max_entries=8)
-def rangkai_audio(kunci: tuple) -> bytes:
-    """Gabungkan rekaman jadi satu aliran MP3, dipisahkan jeda antarparagraf.
-    Semua berkas dibuat dengan penyandi, laju, dan bitrate sama, jadi aman disambung."""
-    jeda = _jeda_mp3()
-    potongan = []
-    for n, k in enumerate(kunci):
-        if n:
-            potongan.append(jeda)
-        potongan.append(baca_audio(k))
-    return b"".join(potongan)
+@st.cache_data(show_spinner=False, max_entries=12)
+def rangkai_blok(blok: tuple) -> bytes:
+    """Gabungkan rekaman jadi satu aliran MP3.
+
+    `blok` berisi tuple per paragraf, masing-masing tuple kunci baris.
+    Antarbaris dalam satu paragraf diberi jeda pendek, antarparagraf jeda panjang.
+    Semua berkas dibuat dengan penyandi, laju, dan bitrate sama, jadi aman disambung.
+    """
+    pendek, panjang = _jeda_mp3()
+    keping = []
+    for i, grup in enumerate(blok):
+        if i:
+            keping.append(panjang)
+        for j, kunci in enumerate(grup):
+            if j:
+                keping.append(pendek)
+            keping.append(baca_audio(kunci))
+    return b"".join(keping)
 
 
-def putar_rangkaian(kunci: list):
-    if not kunci:
+def putar_blok(blok: tuple):
+    if not blok:
         return
     try:
-        st.audio(rangkai_audio(tuple(kunci)), format="audio/mpeg", autoplay=True)
+        st.audio(rangkai_blok(blok), format="audio/mpeg", autoplay=True)
     except Exception:
         st.caption("Rekaman gabungan tidak dapat dibuka.")
 
