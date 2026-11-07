@@ -2669,7 +2669,10 @@ def halaman(fungsi, judul, alamat, ikon_menu=None, default=False):
 
 
 def main():
-    st.set_page_config(page_title="MUNĀẒIR · مُنَاظِرٌ", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
+    # Ikon tab memakai lambang MUNĀẒIR bila berkasnya ada; kalau belum, tetap emoji.
+    ikon = STATIC_DIR / "favicon.png"
+    st.set_page_config(page_title="MUNĀẒIR · مُنَاظِرٌ", page_icon=(str(ikon) if ikon.exists() else "🕌"),
+                       layout="wide", initial_sidebar_state="collapsed")
     st.markdown(CSS, unsafe_allow_html=True)
     st.session_state.setdefault("uploads", [])
     # Harakat untuk seluruh materi dibuat otomatis di latar belakang (pengunjung tidak menunggu)
