@@ -39,8 +39,8 @@ CATATAN_POI = (
 
 CATEGORIES = {
     "sistem_debat": {
-        "warna": "#A57A2C",
-        "warna_teks": "#7A5617",
+        "warna": "#C6A15B",
+        "warna_teks": "#6B5526",
         "label": "Kumpulan Sistem Debat",
         "ar": "أَنْظِمَةُ الْمُنَاظَرَةِ",
         "icon": "",
@@ -83,9 +83,9 @@ CATEGORIES = {
 # Logo di menu atas (huruf ظ + tulisan MUNĀẒIR)
 LOGO_SVG = (
     "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='40' viewBox='0 0 200 40'>"
-    "<rect x='1' y='1' width='38' height='38' rx='9' fill='#2B1F15'/>"
-    "<text x='20' y='29' font-size='24' text-anchor='middle' fill='#F3E9D2' font-family='Amiri, serif'>ظ</text>"
-    "<text x='50' y='26.5' font-size='17' letter-spacing='3.5' fill='#1F1A14' font-family='Georgia, serif'>MUNĀẒIR</text>"
+    "<rect x='1' y='1' width='38' height='38' rx='9' fill='#102A27' stroke='#C6A15B'/>"
+    "<text x='20' y='29' font-size='24' text-anchor='middle' fill='#C6A15B' font-family='Amiri, serif'>ظ</text>"
+    "<text x='50' y='26.5' font-size='17' letter-spacing='3.5' fill='#F4F0E7' font-family='Georgia, serif'>MUNĀẒIR</text>"
     "</svg>"
 )
 
@@ -1165,11 +1165,13 @@ CSS = """
 
 /* ───────── Token desain ───────── */
 :root{
-  --paper:#F3EDE1; --paper-2:#FAF7F0; --paper-3:#ECE4D5;
-  --ink:#1F1A14; --ink-2:#463D33; --muted:#766A5C;
-  --rule:#DBD1C0; --rule-soft:#E7DFD1;
-  --umber:#2B1F15; --umber-2:#463421; --cream:#F3E9D2;
-  --brass:#A57A2C; --brass-ink:#7A5617; --brass-soft:rgba(165,122,44,.14);
+  /* Tema zamrud & emas. Permukaan baca sengaja tetap terang:
+     teks Arab berharakat dibaca lama, jadi tidak ditaruh di atas hijau tua. */
+  --paper:#F4F0E7; --paper-2:#FFFFFF; --paper-3:#EAE6DA;
+  --ink:#202824; --ink-2:#3C4B44; --muted:#4A5A52;
+  --rule:#DCE7DF; --rule-soft:#E6EDE8;
+  --umber:#102A27; --umber-2:#163B32; --cream:#F4F0E7;
+  --brass:#C6A15B; --brass-ink:#6B5526; --brass-soft:rgba(198,161,91,.16);
   /* Amiri disisipkan sebagai cadangan: huruf Arab di tombol, menu, dan isian ikut memakai Amiri */
   --serif:'Newsreader', 'Amiri', Georgia, 'Times New Roman', serif;
   --sans:'IBM Plex Sans', 'Amiri', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -1187,8 +1189,15 @@ html, body, .stApp, [data-testid="stAppViewContainer"]{ background:var(--paper) 
 h1, h2, h3, h4{ font-family:var(--serif) !important; color:var(--ink) !important; font-weight:500 !important; letter-spacing:-.01em; }
 ::selection{ background:rgba(165,122,44,.25); }
 [lang="ar"]{ font-family:var(--arab); }
-[data-testid="stHeader"]{ background:rgba(243,237,225,.88) !important; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--rule); }
+[data-testid="stHeader"]{ background:rgba(16,42,39,.94) !important; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid rgba(198,161,91,.38); }
+/* Menu atas berlatar zamrud: tulisan dan ikonnya dibalik jadi gading, halaman aktif ditandai emas. */
+[data-testid="stHeader"] a, [data-testid="stHeader"] span, [data-testid="stHeader"] p,
+[data-testid="stHeader"] button, [data-testid="stHeader"] label{ color:var(--cream) !important; }
+[data-testid="stHeader"] svg{ fill:currentColor !important; color:var(--cream) !important; }
+[data-testid="stHeader"] a[aria-current="page"], [data-testid="stHeader"] a[aria-current="page"] span,
+[data-testid="stHeader"] [aria-selected="true"], [data-testid="stHeader"] [aria-selected="true"] span{ color:var(--brass) !important; }
+[data-testid="stHeader"] a:hover, [data-testid="stHeader"] button:hover{ background:rgba(244,240,231,.09) !important; }
 [data-testid="stBottom"] > div, [data-testid="stBottomBlockContainer"]{ background:var(--paper) !important; }
 [data-testid="stWidgetLabel"] p{ font-size:.85rem !important; font-weight:500 !important; color:var(--ink-2) !important; }
 [data-testid="stCaptionContainer"]{ color:var(--muted) !important; }
@@ -1277,7 +1286,7 @@ mark{ background:rgba(165,122,44,.22); color:inherit; padding:0 .1em; border-rad
 [data-baseweb="input"]:focus-within, [data-baseweb="textarea"]:focus-within, [data-baseweb="select"] > div:focus-within{
   border-color:var(--brass) !important; box-shadow:0 0 0 3px var(--brass-soft) !important; }
 input, textarea{ color:var(--ink) !important; font-family:var(--sans) !important; }
-input::placeholder, textarea::placeholder{ color:#A39684 !important; }
+input::placeholder, textarea::placeholder{ color:#7E8E86 !important; }
 
 /* ───────── Tab ───────── */
 [data-baseweb="tab-list"]{ gap:1.8rem; border-bottom:1px solid var(--rule); }
@@ -1337,17 +1346,17 @@ input::placeholder, textarea::placeholder{ color:#A39684 !important; }
 .doc .doc-head .mm b{ font-weight:600; letter-spacing:.12em; text-transform:uppercase; font-size:.64rem; color:var(--brass-ink); margin-right:.45rem; }
 .doc .sub{ font-family:var(--serif); font-size:1.2rem; color:var(--ink) !important; margin-top:1.7rem !important; padding-top:1rem; border-top:1px solid var(--rule-soft); }
 .doc .tr{ font-style:italic; padding-left:.9rem; border-left:2px solid var(--brass); }
-.doc.kitab{ background:#FBF6EA; border:1px solid var(--rule); padding:3rem clamp(1.2rem, 5vw, 4rem);
+.doc.kitab{ background:#FFFFFF; border:1px solid var(--rule); padding:3rem clamp(1.2rem, 5vw, 4rem);
   box-shadow:0 1px 0 var(--rule), 0 28px 50px -36px rgba(43,31,21,.45); }
-.doc.malam{ background:var(--umber); padding:2.5rem clamp(1.2rem, 4vw, 3rem); scrollbar-color:#5A4733 transparent; }
-.doc.malam p{ color:#D6C8AF; } .doc.malam p[dir="rtl"]{ color:#F5ECD8; }
-.doc.malam .doc-head{ border-color:rgba(243,233,210,.14); } .doc.malam .doc-head .mt{ color:#F5ECD8; }
-.doc.malam .doc-head .mm{ color:#A99A82; } .doc.malam .doc-head .mm b{ color:#D9BD7E; }
-.doc.malam .sub{ color:#E9D9B0 !important; border-color:rgba(243,233,210,.1); }
-.doc.malam .tr{ color:#CDBFA6; border-color:#D9BD7E; } .doc.malam mark{ background:rgba(233,217,176,.25); }
+.doc.malam{ background:var(--umber); padding:2.5rem clamp(1.2rem, 4vw, 3rem); scrollbar-color:#1D4038 transparent; }
+.doc.malam p{ color:#C9D8CE; } .doc.malam p[dir="rtl"]{ color:#F4F0E7; }
+.doc.malam .doc-head{ border-color:rgba(244,240,231,.16); } .doc.malam .doc-head .mt{ color:#F4F0E7; }
+.doc.malam .doc-head .mm{ color:#9FB3A6; } .doc.malam .doc-head .mm b{ color:#C6A15B; }
+.doc.malam .sub{ color:#E2C98F !important; border-color:rgba(244,240,231,.12); }
+.doc.malam .tr{ color:#B9CCC1; border-color:#C6A15B; } .doc.malam mark{ background:rgba(198,161,91,.3); }
 
 /* ───────── Pembaca materi + audio (tombol Dengarkan per paragraf) ───────── */
-div:has(> [class*="st-key-bacaan_kitab"]){ background:#FBF6EA; border:1px solid var(--rule); border-radius:var(--r);
+div:has(> [class*="st-key-bacaan_kitab"]){ background:#FFFFFF; border:1px solid var(--rule); border-radius:var(--r);
   box-shadow:0 1px 0 var(--rule), 0 28px 50px -36px rgba(43,31,21,.45); }
 div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radius:var(--r); }
 [class*="st-key-bacaan_"]{ padding:2.2rem clamp(1rem, 4.5vw, 3.5rem) 2.6rem; gap:0 !important; }
@@ -1361,7 +1370,7 @@ div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radiu
   background:transparent !important; color:var(--brass-ink) !important; border:1px solid var(--rule) !important; box-shadow:none !important; }
 [class*="st-key-ttsrow_"] .stButton button p{ font-size:.78rem !important; }
 [class*="st-key-ttsrow_"] .stButton button:hover{ border-color:var(--brass) !important; background:var(--paper-2) !important; transform:none; }
-[class*="st-key-bacaan_malam"] [class*="st-key-ttsrow_"] .stButton button{ color:#D9BD7E !important; border-color:rgba(243,233,210,.2) !important; }
+[class*="st-key-bacaan_malam"] [class*="st-key-ttsrow_"] .stButton button{ color:#C6A15B !important; border-color:rgba(243,233,210,.2) !important; }
 [class*="st-key-bacaan_malam"] [class*="st-key-ttsrow_"] .stButton button:hover{ background:rgba(243,233,210,.06) !important; }
 [class*="st-key-ttsrow_"] [data-testid="stAudio"], [class*="st-key-ttsrow_"] audio{ width:100%; max-width:520px; }
 
@@ -1402,7 +1411,7 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
   transition:transform .15s var(--ease), background-color .2s, box-shadow .25s; }
 .btn:hover{ background:var(--umber-2); transform:translateY(-1px); box-shadow:0 12px 22px -14px rgba(43,31,21,.7); }
 .btn:active{ transform:scale(.98); }
-.btn-light{ background:var(--cream); color:var(--umber) !important; } .btn-light:hover{ background:#FFFDF8; }
+.btn-light{ background:var(--cream); color:var(--umber) !important; } .btn-light:hover{ background:#FFFFFF; }
 .btn-ghost{ display:inline-flex; align-items:center; gap:.45rem; min-height:2.9rem; color:var(--ink) !important; text-decoration:none !important; font-weight:500; }
 .btn-ghost .arr, .idx-go{ display:inline-block; transition:transform .3s var(--ease); }
 .btn-ghost:hover{ color:var(--brass-ink) !important; } .btn-ghost:hover .arr{ transform:translateX(5px); }
@@ -1448,9 +1457,9 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
 .st-a{ font-family:var(--arab); font-size:1.15rem; line-height:2.45; word-spacing:.1em; color:var(--brass-ink); margin-top:.9rem; }
 .band{ position:relative; overflow:hidden; margin-top:3.8rem; background:var(--umber); border-radius:16px; padding:clamp(1.7rem, 4vw, 2.7rem);
   display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1.4rem; }
-.band-t{ font-family:var(--serif); font-size:clamp(1.45rem, 3vw, 1.95rem); color:#F6EEDC; line-height:1.2; }
-.band-p{ color:#BFAF95; margin:.4rem 0 0; max-width:50ch; line-height:1.6; }
-.band-zha{ position:absolute; right:3%; bottom:-38%; font-family:var(--arab-judul); font-size:15rem; line-height:1; color:rgba(233,217,176,.06); pointer-events:none; }
+.band-t{ font-family:var(--serif); font-size:clamp(1.45rem, 3vw, 1.95rem); color:#F4F0E7; line-height:1.2; }
+.band-p{ color:#9FB3A6; margin:.4rem 0 0; max-width:50ch; line-height:1.6; }
+.band-zha{ position:absolute; right:3%; bottom:-38%; font-family:var(--arab-judul); font-size:15rem; line-height:1; color:rgba(198,161,91,.07); pointer-events:none; }
 .band > div, .band > a{ position:relative; }
 
 /* ───────── Profil ───────── */
@@ -2344,7 +2353,7 @@ def page_translate(kb):
 TIMER_HTML = """<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
 <style>
-:root{--paper:#F3EDE1;--paper2:#FAF7F0;--ink:#1F1A14;--ink2:#463D33;--muted:#766A5C;--rule:#DBD1C0;--umber:#2B1F15;--cream:#F3E9D2;--brass:#C9A04E;--poi:#7FA58A;--stop:#D46A5A;--pro:#4E6B58;--kon:#9B4E3A}
+:root{--paper:#F4F0E7;--paper2:#FFFFFF;--ink:#202824;--ink2:#3C4B44;--muted:#4A5A52;--rule:#DCE7DF;--umber:#102A27;--cream:#F4F0E7;--brass:#C6A15B;--poi:#7FA58A;--stop:#D46A5A;--pro:#4E6B58;--kon:#9B4E3A}
 *{box-sizing:border-box}
 body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);background:transparent;-webkit-font-smoothing:antialiased}
 .wrap{display:flex;flex-wrap:wrap;gap:20px}
@@ -2352,15 +2361,15 @@ body{margin:0;font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--ink);
 .main{flex:999 1 420px;min-width:0;padding:28px 22px 26px;border-radius:16px;background:var(--umber);color:var(--cream);display:flex;flex-direction:column;align-items:center;gap:16px}
 .side{flex:1 1 260px;padding:18px 14px;border-radius:16px;background:var(--paper2);border:1px solid var(--rule);display:flex;flex-direction:column;gap:6px}
 .tim{font-size:11px;letter-spacing:.16em;font-weight:600;text-align:center;text-transform:uppercase;line-height:2}
-.nama{font-family:'Newsreader',Georgia,serif;font-size:26px;color:#F6EEDC;text-align:center;margin-top:4px}
-.ar{font-family:'Amiri',serif;font-size:22px;line-height:2.4;word-spacing:.12em;color:#D9BD7E;text-align:center;margin-top:8px}
+.nama{font-family:'Newsreader',Georgia,serif;font-size:26px;color:#F4F0E7;text-align:center;margin-top:4px}
+.ar{font-family:'Amiri',serif;font-size:22px;line-height:2.4;word-spacing:.12em;color:#C6A15B;text-align:center;margin-top:8px}
 .tar{font-family:'Amiri',serif;font-size:15px;letter-spacing:0;text-transform:none;font-weight:400;line-height:2;margin-left:4px}
 .ring{position:relative;width:260px;height:260px}
 .ring svg{display:block}
 #arc{transition:stroke-dashoffset 1s linear,stroke .4s ease}
 .ring .t{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.sisa{font-family:'Newsreader',Georgia,serif;font-size:64px;color:#F6EEDC;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.dari{font-size:12px;color:#A99A82;margin-top:6px}
+.sisa{font-family:'Newsreader',Georgia,serif;font-size:64px;color:#F4F0E7;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.dari{font-size:12px;color:#9FB3A6;margin-top:6px}
 .fase{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;border:1px solid;font-size:13px;font-weight:500;transition:color .3s,border-color .3s}
 .fase i{width:8px;height:8px;border-radius:50%;display:inline-block;transition:background .3s}
 .fase.jalan i{animation:pulse 1.2s ease-in-out infinite}
@@ -2371,7 +2380,7 @@ button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 .b2{min-height:44px;padding:0 18px;border-radius:8px;border:1px solid rgba(243,233,210,.28);background:transparent;color:var(--cream);font-size:14px}
 .b2:hover{border-color:var(--brass)}
 .b1{min-width:140px;min-height:44px;padding:0 24px;border-radius:8px;border:1px solid var(--cream);background:var(--cream);color:var(--umber);font-weight:600;font-size:15px}
-.b1:hover{background:#FFFDF8}
+.b1:hover{background:#FFFFFF}
 .lbl{font-size:11px;letter-spacing:.14em;color:var(--muted);font-weight:600;padding:0 6px 8px}
 .it{position:relative;display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 12px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--ink2);font-size:14px;text-align:left;width:100%}
 .it:hover{background:#F1EADC}
@@ -2392,7 +2401,7 @@ button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
   <div class="btns"><button class="b2" id="ulang">Ulang</button><button class="b1" id="toggle">Mulai</button><button class="b2" id="next">Berikutnya &rarr;</button></div>
  </div>
  <div class="side"><div class="lbl">URUTAN PEMBICARA</div><div id="list" style="display:flex;flex-direction:column;gap:4px"></div>
-  <div class="ket"><b style="color:#4E6B58">Hijau</b> POI boleh diajukan · <b style="color:#A57A2C">Kuning</b> waktu terlindungi (menit pertama &amp; terakhir) · <b style="color:#B4513F">Merah</b> waktu habis. Bel berbunyi saat fase berganti.</div></div>
+  <div class="ket"><b style="color:#4E6B58">Hijau</b> POI boleh diajukan · <b style="color:#6B5526">Kuning</b> waktu terlindungi (menit pertama &amp; terakhir) · <b style="color:#B4513F">Merah</b> waktu habis. Bel berbunyi saat fase berganti.</div></div>
 </div>
 <script>
 const U=__UTAMA__, B=__BALASAN__;
