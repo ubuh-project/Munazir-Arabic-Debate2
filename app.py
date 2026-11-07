@@ -13,7 +13,8 @@ import json
 import html
 import difflib
 import hashlib
-from pathlib import Path
+import zipfile
+from pathlib import Path, PurePosixPath
 
 import numpy as np
 import streamlit as st
@@ -1597,7 +1598,7 @@ def pilih_tts(kunci: str):
 
 
 def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26):
-    """Pembaca materi dengan tombol Dengarkan di setiap paragraf yang memuat teks Arab."""
+    """Pembaca materi dengan tombol Dengarkan pada paragraf yang sudah ada rekamannya."""
     meta, body = split_header(text)
     mode = "kitab" if kitab else "malam"
     limit = 60000
@@ -1609,7 +1610,7 @@ def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26):
         for i, p in enumerate(paras):
             st.markdown(f"<div class='doc {mode} doc-polos'>{_paragraf_html(p, '', ukuran)}</div>", unsafe_allow_html=True)
             ar = teks_untuk_audio(p)
-            if not ar:
+            if not ar or not berkas_audio(ar):
                 continue
             kunci = f"{cat}_{i}_{_kunci(p)[:10]}"
             with st.container(key=f"ttsrow_{kunci}"):
@@ -1695,66 +1696,79 @@ def siapkan_harakat_materi(doc) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# AUDIO TEKS ARAB (Edge TTS — suara neural Microsoft, gratis)
-# Wajib: tambahkan baris  edge-tts  di requirements.txt
+# AUDIO TEKS ARAB (rekaman suara pengembang — kloning XTTS-v2)
+# Berkas MP3 dibuat di komputer dengan buat_suara.py lalu diletakkan
+# di static/audio/. Website hanya memutar berkas, tidak memanggil AI.
 # ─────────────────────────────────────────────────────────────
-SUARA_ARAB = {
-    "Laki-laki · Saudi": "ar-SA-HamedNeural",
-    "Perempuan · Saudi": "ar-SA-ZariyahNeural",
-    "Laki-laki · Mesir": "ar-EG-ShakirNeural",
-    "Perempuan · Mesir": "ar-EG-SalmaNeural",
-}
-KECEPATAN_SUARA = {"Normal": "+0%", "Pelan": "-20%", "Sangat pelan": "-35%"}
+AUDIO_DIR = STATIC_DIR / "audio"
 
 
-@st.cache_data(show_spinner=False, max_entries=600)
-def tts_arab(teks: str, suara: str, laju: str) -> bytes:
-    """Ubah teks Arab menjadi audio MP3 dengan Edge TTS (hasil disimpan agar tidak dibuat ulang)."""
-    import asyncio
-    import edge_tts
-
-    async def _buat():
-        buf = bytearray()
-        async for bagian in edge_tts.Communicate(teks, suara, rate=laju).stream():
-            if bagian.get("type") == "audio":
-                buf.extend(bagian["data"])
-        return bytes(buf)
-
-    try:
-        return asyncio.run(_buat())
-    except RuntimeError:  # bila sudah ada event loop yang berjalan
-        loop = asyncio.new_event_loop()
+@st.cache_resource(show_spinner=False)
+def _indeks_audio(_tanda: str) -> dict:
+    """Peta kunci -> (arsip, nama berkas). Menerima .mp3 lepas maupun di dalam .zip."""
+    peta = {}
+    if not AUDIO_DIR.exists():
+        return peta
+    for berkas in sorted(AUDIO_DIR.glob("*.mp3")):
+        peta[berkas.stem] = (None, str(berkas))
+    for arsip in sorted(AUDIO_DIR.glob("*.zip")):
         try:
-            return loop.run_until_complete(_buat())
-        finally:
-            loop.close()
+            with zipfile.ZipFile(arsip) as z:
+                for nama in z.namelist():
+                    jalur = PurePosixPath(nama)
+                    if jalur.suffix.lower() in (".mp3", ".wav"):
+                        peta[jalur.stem] = (str(arsip), nama)
+        except Exception:
+            continue
+    return peta
+
+
+def indeks_audio() -> dict:
+    try:
+        tanda = "|".join(f"{p.name}:{p.stat().st_size}"
+                         for p in sorted(AUDIO_DIR.glob("*.zip")))
+    except OSError:
+        tanda = ""
+    return _indeks_audio(tanda)
+
+
+def kunci_audio(ar: str) -> str:
+    """Kunci dihitung dari teks TANPA harakat agar perbaikan harakat
+    tidak memutus kaitan paragraf dengan berkas rekamannya."""
+    polos = re.sub(r"\s+", " ", AR_DIACRITICS.sub("", ar or "")).strip()
+    return hashlib.md5(polos.encode("utf-8")).hexdigest()[:16]
+
+
+def berkas_audio(ar: str):
+    """Kunci rekaman untuk teks Arab ini, atau None bila belum ada."""
+    k = kunci_audio(ar)
+    return k if k in indeks_audio() else None
+
+
+@st.cache_data(show_spinner=False, max_entries=48)
+def baca_audio(kunci: str) -> bytes:
+    arsip, nama = indeks_audio()[kunci]
+    if arsip is None:
+        return Path(nama).read_bytes()
+    with zipfile.ZipFile(arsip) as z:
+        return z.read(nama)
 
 
 def pilihan_suara():
-    """Pilihan suara & kecepatan (berlaku di seluruh website)."""
-    c1, c2 = st.columns(2)
-    c1.selectbox("Suara", list(SUARA_ARAB), key="tts_suara")
-    c2.selectbox("Kecepatan", list(KECEPATAN_SUARA), key="tts_laju")
+    """Keterangan pemilik suara (tidak ada lagi pilihan mesin TTS)."""
+    st.caption(f"Suara: {PROFIL['nama']}")
 
 
 def putar_audio_arab(teks: str, autoplay: bool = True):
-    """Buat & putar audio untuk teks Arab (memakai suara dan kecepatan yang dipilih)."""
-    teks = (teks or "").strip()
-    if not teks:
+    """Putar rekaman untuk teks Arab ini."""
+    kunci = berkas_audio(teks)
+    if not kunci:
+        st.caption("Rekaman untuk bagian ini belum tersedia.")
         return
-    suara = SUARA_ARAB.get(st.session_state.get("tts_suara"), "ar-SA-HamedNeural")
-    laju = KECEPATAN_SUARA.get(st.session_state.get("tts_laju"), "+0%")
     try:
-        with st.spinner("Menyiapkan audio…"):
-            audio = tts_arab(teks[:4000], suara, laju)
-        if audio:
-            st.audio(audio, format="audio/mp3", autoplay=autoplay)
-        else:
-            st.warning("Audio kosong. Coba lagi sebentar lagi.")
-    except ImportError:
-        st.warning("Fitur audio belum aktif: tambahkan baris `edge-tts` di requirements.txt lalu deploy ulang.")
-    except Exception as e:
-        st.warning(f"Audio sedang tidak tersedia ({e}). Coba lagi sebentar lagi.")
+        st.audio(baca_audio(kunci), format="audio/mpeg", autoplay=autoplay)
+    except Exception:
+        st.caption("Rekaman tidak dapat dibuka.")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -2052,7 +2066,7 @@ def page_translate(kb):
             st.markdown(f"<div class='id-box'><div class='eyebrow'>Hasil terjemahan</div>{fmt_campur(tr)}</div>", unsafe_allow_html=True)
         st.code(tr, language=None)
         teks_suara = tr if is_mostly_arabic(tr) else (res.get("ASAL", "") if is_mostly_arabic(res.get("ASAL", "")) else "")
-        if teks_suara:
+        if teks_suara and berkas_audio(teks_suara):
             st.markdown("<div class='subhead'>Dengarkan teks Arab</div>", unsafe_allow_html=True)
             pilihan_suara()
             if st.button("Dengarkan", key="tts_terjemahan", icon=":material/volume_up:"):
