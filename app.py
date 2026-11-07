@@ -1597,27 +1597,54 @@ def pilih_tts(kunci: str):
     st.session_state["tts_putar"] = kunci
 
 
-def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26):
-    """Pembaca materi dengan tombol Dengarkan pada paragraf yang sudah ada rekamannya."""
+def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
+                     asli: str = ""):
+    """Pembaca materi dengan tombol Dengarkan.
+
+    Rekaman dicari memakai teks ASLI dari berkas materi (parameter `asli`),
+    bukan teks yang sudah diberi harakat, karena kuncinya dibuat dari teks asli.
+    """
     meta, body = split_header(text)
     mode = "kitab" if kitab else "malam"
     limit = 60000
     paras = [p.strip() for p in re.split(r"\n+", body[:limit]) if p.strip()]
+
+    sumber = paras
+    if asli:
+        _, body_asli = split_header(asli)
+        kasar = [p.strip() for p in re.split(r"\n+", body_asli[:limit]) if p.strip()]
+        if len(kasar) == len(paras):
+            sumber = kasar
+
+    kunci_paragraf = []
+    for p in sumber:
+        ar = teks_untuk_audio(p)
+        kunci_paragraf.append(berkas_audio(ar) if ar else None)
+    tersedia = [k for k in kunci_paragraf if k]
+
     putar = st.session_state.get("tts_putar")
+    if tersedia:
+        with st.container(key=f"ttsall_{mode}_{cat}"):
+            st.button(f"Dengarkan seluruh materi · {len(tersedia)} bagian",
+                      key=f"ttsallbtn_{mode}_{cat}", icon=":material/playlist_play:",
+                      on_click=pilih_tts, args=(f"SEMUA_{cat}",))
+            if putar == f"SEMUA_{cat}":
+                putar_rangkaian(tersedia)
+
     with st.container(height=640, border=False, key=f"bacaan_{mode}_{cat}"):
         if meta:
             st.markdown(f"<div class='doc {mode} doc-polos'>{_kepala_doc(meta)}</div>", unsafe_allow_html=True)
         for i, p in enumerate(paras):
             st.markdown(f"<div class='doc {mode} doc-polos'>{_paragraf_html(p, '', ukuran)}</div>", unsafe_allow_html=True)
-            ar = teks_untuk_audio(p)
-            if not ar or not berkas_audio(ar):
+            k_audio = kunci_paragraf[i]
+            if not k_audio:
                 continue
             kunci = f"{cat}_{i}_{_kunci(p)[:10]}"
             with st.container(key=f"ttsrow_{kunci}"):
                 st.button("Dengarkan", key=f"ttsbtn_{kunci}", icon=":material/volume_up:",
                           on_click=pilih_tts, args=(kunci,))
                 if putar == kunci:
-                    putar_audio_arab(ar)
+                    st.audio(baca_audio(k_audio), format="audio/mpeg", autoplay=True)
     if len(body) > limit:
         st.caption(f"… ditampilkan {limit:,} dari {len(body):,} karakter. Gunakan tab Cari / Tanya untuk bagian lainnya.")
 
@@ -1751,6 +1778,22 @@ def baca_audio(kunci: str) -> bytes:
         return Path(nama).read_bytes()
     with zipfile.ZipFile(arsip) as z:
         return z.read(nama)
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def rangkai_audio(kunci: tuple) -> bytes:
+    """Gabungkan beberapa rekaman jadi satu aliran MP3 (semua dibuat
+    dengan penyandi, laju, dan bitrate yang sama, jadi aman disambung)."""
+    return b"".join(baca_audio(k) for k in kunci)
+
+
+def putar_rangkaian(kunci: list):
+    if not kunci:
+        return
+    try:
+        st.audio(rangkai_audio(tuple(kunci)), format="audio/mpeg", autoplay=True)
+    except Exception:
+        st.caption("Rekaman gabungan tidak dapat dibuka.")
 
 
 def pilihan_suara():
@@ -1993,7 +2036,8 @@ def page_category(cat: str, kb):
             doc = shown[pick]
             teks = siapkan_harakat_materi(doc)
             if pakai_audio:
-                render_doc_audio(teks, cat, kitab=(mode == "Kertas"), ukuran=ukuran)
+                render_doc_audio(teks, cat, kitab=(mode == "Kertas"), ukuran=ukuran,
+                                 asli=doc["text"])
             else:
                 render_doc(teks, kitab=(mode == "Kertas"), ukuran=ukuran)
 
