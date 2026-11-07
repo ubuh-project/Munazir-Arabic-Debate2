@@ -1398,9 +1398,9 @@ div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radiu
 .hero .mosi-ar{ color:var(--cream); } .hero .mosi-id{ color:#DCE7DF; }
 .hero .mosi-no{ color:#9FB3A6; }
 .hero .tag{ color:var(--brass); border-color:rgba(198,161,91,.5); }
-/* Lambang logo punya latar krem sendiri; diberi bingkai emas agar
-   terbaca sebagai medali yang disengaja, bukan gambar tertempel. */
-.hero .hero-logo{ border-radius:14px; border:1px solid rgba(198,161,91,.55); }
+/* Logo dibiarkan tanpa bingkai dan tanpa latar: berkas WebP-nya transparan,
+   sehingga lambang menyatu langsung dengan panel zamrud. */
+.hero .hero-logo{ background:transparent; border:0; }
 .hero-top{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; margin-bottom:1.2rem; }
 .hero-meta{ font-size:.82rem; color:var(--muted); }
 .hero-ar{ font-family:var(--arab-judul); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:2.05; word-spacing:.1em; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.6rem 0; }
@@ -1412,11 +1412,17 @@ div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radiu
 /* Arti baris Arab besar — menempel di bawahnya, rata kanan mengikuti teks Arab */
 .hero-arti{ font-family:var(--serif); font-style:italic; font-size:clamp(1rem, 1.7vw, 1.2rem);
   line-height:1.45; color:var(--ink-2); text-align:right; margin:.1rem 0 0; }
-.hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto; }
-.intro .hero-logo{ animation:logo-in 1s var(--ease) both; }
+.hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto;
+  animation:logo-apung 5.5s ease-in-out infinite; will-change:transform; }
+.intro .hero-logo{ animation:logo-in 1s var(--ease) both, logo-apung 5.5s ease-in-out 1s infinite; }
+/* Logo melayang pelan — satu-satunya gerak yang berjalan terus di halaman. */
+@keyframes logo-apung{ 0%, 100%{ transform:translateY(-5px); } 50%{ transform:translateY(5px); } }
+@media (prefers-reduced-motion: reduce){
+  .hero-logo, .intro .hero-logo, .splash-logo{ animation:none !important; }
+}
 /* logo WebP sudah transparan; khusus video cadangan (berlatar krem), tepinya dibuat lembut */
 img.hero-logo, img.splash-logo{ display:block; background:transparent; }
-video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%);
+video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 66% 66% at 50% 50%, #000 62%, transparent 100%);
   mask-image:radial-gradient(ellipse 72% 72% at 50% 50%, #000 78%, transparent 100%); }
 @keyframes logo-in{ from{ opacity:0; transform:scale(.82) rotate(-8deg); } to{ opacity:1; transform:none; } }
 
