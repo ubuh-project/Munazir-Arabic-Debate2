@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MUNAZIR (مُنَاظِرٌ) — Panduan & Pedoman Debat Bahasa Arab
+MUNĀẒIR (مُنَاظِرٌ) — Panduan & Pedoman Debat Bahasa Arab
 Streamlit + Groq AI + basis pengetahuan HANYA dari file materi yang diunggah (tanpa sumber internet).
 
 Cara menjalankan lokal:  streamlit run app.py
@@ -28,12 +28,12 @@ DATA_DIR = APP_DIR / "data"
 EXTS = {".txt", ".md", ".pdf", ".docx"}
 
 # ── ISTILAH POI (dipakai seragam di seluruh website) ──
-# Istilah Arab resmi MUNAZIR untuk POI. Buku sumber (Al-Murshed, Booklet QD, slide QatarDebate)
+# Istilah Arab resmi MUNĀẒIR untuk POI. Buku sumber (Al-Murshed, Booklet QD, slide QatarDebate)
 # memakai  الْمُدَاخَلَة  untuk konsep yang sama; teks kutipan buku TIDAK diubah, tetapi diberi catatan.
 ISTILAH_POI = "نُقْطَةُ الاِسْتِشَارَةِ"
 LABEL_POI = f"POI ({ISTILAH_POI})"
 CATATAN_POI = (
-    f"**Catatan istilah:** di MUNAZIR, POI disebut **{ISTILAH_POI}**. "
+    f"**Catatan istilah:** di MUNĀẒIR, POI disebut **{ISTILAH_POI}**. "
     "Sumber ini memakai istilah **الْمُدَاخَلَةُ** (jamak: **الْمُدَاخَلَاتُ**) untuk konsep yang sama."
 )
 
@@ -57,7 +57,7 @@ CATEGORIES = {
     "ibarah": {
         "warna": "#9B4E3A",
         "warna_teks": "#7E3E2D",
-        "label": "Ibarah",
+        "label": "ʿIbārah",
         "ar": "الْعِبَارَاتُ",
         "icon": "",
         "desc": "Bank ibārah: membuka, berargumen, memberi bukti, menyanggah, bertanya, dan menutup pidato.",
@@ -80,12 +80,12 @@ CATEGORIES = {
     },
 }
 
-# Logo di menu atas (huruf ظ + tulisan MUNAZIR)
+# Logo di menu atas (huruf ظ + tulisan MUNĀẒIR)
 LOGO_SVG = (
     "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='40' viewBox='0 0 200 40'>"
     "<rect x='1' y='1' width='38' height='38' rx='9' fill='#2B1F15'/>"
     "<text x='20' y='29' font-size='24' text-anchor='middle' fill='#F3E9D2' font-family='Amiri, serif'>ظ</text>"
-    "<text x='50' y='26.5' font-size='17' letter-spacing='3.5' fill='#1F1A14' font-family='Georgia, serif'>MUNAZIR</text>"
+    "<text x='50' y='26.5' font-size='17' letter-spacing='3.5' fill='#1F1A14' font-family='Georgia, serif'>MUNĀẒIR</text>"
     "</svg>"
 )
 
@@ -104,7 +104,7 @@ SPLASH_DETIK = 4.2  # lama layar pembuka tampil sebelum memudar (detik)
 def video_logo(kelas: str, ulang: bool = True) -> str:
     """Logo 3D beranimasi: gambar WebP transparan (utama) atau <video> (cadangan); kosong bila belum ada file."""
     if (STATIC_DIR / LOGO_GAMBAR).exists():
-        return f"<img class='{kelas}' src='app/static/{LOGO_GAMBAR}' alt='Logo MUNAZIR' decoding='async'>"
+        return f"<img class='{kelas}' src='app/static/{LOGO_GAMBAR}' alt='Logo MUNĀẒIR' decoding='async'>"
     sumber = "".join(
         f"<source src='app/static/{nama}' type='{tipe}'>"
         for nama, tipe in LOGO_VIDEO if (STATIC_DIR / nama).exists()
@@ -113,7 +113,7 @@ def video_logo(kelas: str, ulang: bool = True) -> str:
         return ""
     loop = " loop" if ulang else ""
     return (f"<video class='{kelas}' autoplay muted{loop} playsinline preload='auto' "
-            f"aria-label='Logo MUNAZIR'>{sumber}</video>")
+            f"aria-label='Logo MUNĀẒIR'>{sumber}</video>")
 
 # Ikon menu atas (Material Symbols bawaan Streamlit)
 IKON_MENU = {
@@ -355,7 +355,7 @@ def build_kb(docs):
     return kb
 
 
-@st.cache_resource(show_spinner="Menyiapkan basis pengetahuan MUNAZIR…")
+@st.cache_resource(show_spinner="Menyiapkan basis pengetahuan MUNĀẒIR…")
 def build_disk_kb(signature):
     return build_kb(load_disk_docs(signature))
 
@@ -465,14 +465,14 @@ def call_llm(messages, temperature: float = 0.3, max_tokens: int = 1800) -> str:
     raise RuntimeError(f"Gagal menghubungi Groq: {last_err}")
 
 
-SYSTEM_CHAT = """Kamu adalah MUNAZIR (مُنَاظِرٌ), asisten AI panduan dan pedoman debat bahasa Arab (munazarah).
-Tugasmu membantu pengguna menemukan materi dari BASIS PENGETAHUAN MUNAZIR: sistem debat, mosi, ibarah, kosa kata, dan muqaddimah.
-KONTEKS berisi potongan [Materi …] dari file materi resmi MUNAZIR. Itulah SATU-SATUNYA sumber yang boleh kamu pakai.
+SYSTEM_CHAT = """Kamu adalah MUNĀẒIR (مُنَاظِرٌ), asisten AI panduan dan pedoman debat bahasa Arab (munazarah).
+Tugasmu membantu pengguna menemukan materi dari BASIS PENGETAHUAN MUNĀẒIR: sistem debat, mosi, ibarah, kosa kata, dan muqaddimah.
+KONTEKS berisi potongan [Materi …] dari file materi resmi MUNĀẒIR. Itulah SATU-SATUNYA sumber yang boleh kamu pakai.
 
 ATURAN:
 1. Jawab HANYA berdasarkan KONTEKS [Materi …]. Jangan memakai pengetahuanmu sendiri, internet, atau sumber lain,
    dan jangan mengarang materi yang tidak ada di konteks.
-2. Jika konteks tidak memuat jawabannya, katakan dengan sopan bahwa materi tersebut belum tersedia di MUNAZIR.
+2. Jika konteks tidak memuat jawabannya, katakan dengan sopan bahwa materi tersebut belum tersedia di MUNĀẒIR.
    Untuk salam/sapaan, balas singkat dan ramah.
 3. Penjelasan ditulis dalam bahasa Indonesia yang jelas dan rapi (boleh memakai poin-poin).
 4. Bagian ARAB berisi kutipan teks Arab dari konteks yang relevan dengan jawaban. Jangan mengubah kata-katanya,
@@ -480,7 +480,7 @@ ATURAN:
    Jika konteks tidak memuat teks Arab yang relevan, tulis "-".
 5. Bagian SUMBER berisi nama file materi yang benar-benar dipakai, dipisahkan koma. Tulis "-" jika tidak ada.
 6. Setiap kata atau istilah Arab yang muncul di bagian JAWABAN juga WAJIB diberi harakat lengkap.
-7. ISTILAH POI: di MUNAZIR, istilah Arab untuk POI (Point of Information) adalah نُقْطَةُ الاِسْتِشَارَةِ.
+7. ISTILAH POI: di MUNĀẒIR, istilah Arab untuk POI (Point of Information) adalah نُقْطَةُ الاِسْتِشَارَةِ.
    Di bagian JAWABAN selalu gunakan istilah ini. Jika konteks memakai الْمُدَاخَلَةُ / الْمُدَاخَلَاتُ,
    jelaskan bahwa itu sebutan lain untuk POI yang sama. Di bagian ARAB, kutipan dari konteks tetap apa adanya.
 
@@ -538,7 +538,7 @@ def build_context(chunks, limit_chars: int = 6000) -> str:
 
 
 def answer_question(question: str, cats=None, history=None):
-    """Jawab pertanyaan HANYA dari materi MUNAZIR (tanpa pencarian internet)."""
+    """Jawab pertanyaan HANYA dari materi MUNĀẒIR (tanpa pencarian internet)."""
     kb = get_kb()
     expansion = expand_query(question) if kb["chunks"] else ""
     hits = search(kb, f"{question}\n{expansion}", k=6, cats=cats)
@@ -1141,7 +1141,7 @@ def lengkapi_harakat(parsed: dict, bagian=("JAWABAN", "ARAB", "SUMBER"), ekstra=
 # ─────────────────────────────────────────────────────────────
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap');
 
 /* ───────── Token desain ───────── */
 :root{
@@ -1154,6 +1154,8 @@ CSS = """
   --serif:'Newsreader', 'Amiri', Georgia, 'Times New Roman', serif;
   --sans:'IBM Plex Sans', 'Amiri', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --arab:'Amiri', 'Traditional Arabic', 'Times New Roman', serif;
+  /* Judul Arab memakai khat ruq'ah; harakatnya dilepas lewat tanpa_harakat() */
+  --arab-judul:'Aref Ruqaa', 'Amiri', 'Traditional Arabic', serif;
   --ease:cubic-bezier(.2,.7,.2,1);
   --r:10px;
 }
@@ -1215,7 +1217,7 @@ mark{ background:rgba(165,122,44,.22); color:inherit; padding:0 .1em; border-rad
 .ph{ margin:0 0 1.8rem; }
 .ph-row{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.8rem 2rem; margin:.7rem 0 1rem; }
 .ph-t{ font-family:var(--serif); font-size:clamp(2rem, 4vw, 2.85rem); line-height:1.08; color:var(--ink); letter-spacing:-.02em; }
-.ph-a{ font-family:var(--arab); font-size:clamp(1.45rem, 3vw, 2rem); color:var(--brass-ink); line-height:2.2; padding:.45rem 0; word-spacing:.12em; }
+.ph-a{ font-family:var(--arab-judul); font-size:clamp(1.45rem, 3vw, 2rem); color:var(--brass-ink); line-height:2.2; padding:.45rem 0; word-spacing:.12em; }
 .ph-d{ color:var(--muted); max-width:64ch; margin:0 0 1.3rem; line-height:1.65; }
 
 /* ───────── Tombol ───────── */
@@ -1347,7 +1349,7 @@ div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radiu
 .hero{ padding:.4rem 0 3rem; }
 .hero-top{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 1rem; margin-bottom:1.2rem; }
 .hero-meta{ font-size:.82rem; color:var(--muted); }
-.hero-ar{ font-family:var(--arab); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:2.05; word-spacing:.1em; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.6rem 0; }
+.hero-ar{ font-family:var(--arab-judul); font-weight:700; font-size:clamp(2.3rem, 6.2vw, 4.7rem); line-height:2.05; word-spacing:.1em; color:var(--ink); text-align:right; margin:0 0 1.6rem; padding:.6rem 0; }
 .hero-grid{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:clamp(1.8rem, 5vw, 4.5rem); margin-top:2.2rem; align-items:start; }
 .hero-lead{ font-family:var(--serif); font-size:clamp(1.2rem, 2.2vw, 1.45rem); line-height:1.5; color:var(--ink); margin:0 0 1.8rem; max-width:34ch; }
 .hero-head{ display:flex; align-items:center; gap:clamp(1rem, 3vw, 2.6rem); margin:0 0 1.2rem; }
@@ -1365,7 +1367,7 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
   background:var(--paper); pointer-events:none; animation:splash-out .8s var(--ease) var(--t, 3.5s) forwards; }
 .splash-logo{ width:min(56vw, 340px); height:auto; animation:logo-in 1s var(--ease) both; }
 .splash-nama{ font-family:var(--serif); font-size:1.05rem; letter-spacing:.32em; color:var(--ink-2); animation:logo-in 1s var(--ease) .35s both; }
-.splash-nama span{ font-family:var(--arab); letter-spacing:0; font-size:1.4rem; line-height:2.2; margin-left:.9rem; }
+.splash-nama span{ font-family:var(--arab-judul); letter-spacing:0; font-size:1.4rem; line-height:2.2; margin-left:.9rem; }
 @keyframes splash-out{ to{ opacity:0; visibility:hidden; } }
 .hero-cta{ display:flex; flex-wrap:wrap; align-items:center; gap:.6rem 1.4rem; }
 .stats{ display:flex; flex-wrap:wrap; gap:1.2rem 2.6rem; margin:2.4rem 0 0; padding-top:1.3rem; border-top:1px solid var(--rule-soft); }
@@ -1404,7 +1406,7 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
 .idx-n{ font-family:var(--serif); font-size:.95rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 .idx-t{ display:block; font-family:var(--serif); font-size:1.35rem; line-height:1.2; color:var(--ink); }
 .idx-d{ display:block; font-size:.86rem; line-height:1.55; color:var(--muted); margin-top:.3rem; max-width:60ch; }
-.idx-ar{ font-family:var(--arab); font-size:1.3rem; line-height:2.4; color:var(--brass-ink); white-space:nowrap; padding:0 .8rem; }
+.idx-ar{ font-family:var(--arab-judul); font-size:1.3rem; line-height:2.4; color:var(--brass-ink); white-space:nowrap; padding:0 .8rem; }
 .idx-c{ font-size:.8rem; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
 .idx a:hover .idx-go{ transform:translateX(5px); color:var(--brass-ink); }
 .quote{ margin-top:3.6rem; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:clamp(1.4rem, 4vw, 3.5rem); align-items:center;
@@ -1424,7 +1426,7 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
   display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1.4rem; }
 .band-t{ font-family:var(--serif); font-size:clamp(1.45rem, 3vw, 1.95rem); color:#F6EEDC; line-height:1.2; }
 .band-p{ color:#BFAF95; margin:.4rem 0 0; max-width:50ch; line-height:1.6; }
-.band-zha{ position:absolute; right:3%; bottom:-38%; font-family:var(--arab); font-size:15rem; line-height:1; color:rgba(233,217,176,.06); pointer-events:none; }
+.band-zha{ position:absolute; right:3%; bottom:-38%; font-family:var(--arab-judul); font-size:15rem; line-height:1; color:rgba(233,217,176,.06); pointer-events:none; }
 .band > div, .band > a{ position:relative; }
 
 /* ───────── Profil ───────── */
@@ -1502,6 +1504,12 @@ def fmt_inline(t: str) -> str:
     return t.replace("\n", "<br>")
 
 
+def tanpa_harakat(t: str) -> str:
+    """Lepas harakat. Dipakai untuk tajuk berfont Aref Ruqaa, yang
+    penempatan tanda barisnya tidak serapi Amiri."""
+    return AR_DIACRITICS.sub("", t or "")
+
+
 def fmt_campur(t: str) -> str:
     """Seperti fmt_inline, tetapi teks Arab di tengah kalimat diberi jarak."""
     return bungkus_arab(fmt_inline(t))
@@ -1511,7 +1519,7 @@ def page_header(title: str, arabic: str = "", desc: str = "", eyebrow: str = "")
     st.markdown(
         f"<div class='ph'><div class='eyebrow reveal'>{esc(eyebrow)}</div>"
         f"<div class='ph-row reveal' style='--i:1'><div class='ph-t'>{esc(title)}</div>"
-        f"<div class='ph-a' dir='rtl' lang='ar'>{esc(arabic)}</div></div>"
+        f"<div class='ph-a' dir='rtl' lang='ar'>{esc(tanpa_harakat(arabic))}</div></div>"
         f"<p class='ph-d reveal' style='--i:2'>{esc(desc)}</p><div class='rule-draw'></div></div>",
         unsafe_allow_html=True,
     )
@@ -1602,14 +1610,47 @@ AKHIR_KALIMAT = re.compile(r"[.؟!…۔][\"'»)\]\s]*$")
 MAKS_BARIS_BLOK = 12
 
 
+def baris_audio(p: str) -> str:
+    """Teks Arab yang layak disuarakan dari satu baris (penyaring sama dengan skrip Colab)."""
+    ar = teks_untuk_audio(p)
+    return ar if ar and len(AR_HURUF_DASAR.findall(ar)) >= 4 else ""
+
+
+def susun_blok(sumber: list) -> list:
+    """Gabungkan baris menjadi paragraf yang berakhir di titik.
+
+    Hasil: daftar (indeks baris terakhir, potongan audio). `potongan` berisi satu
+    kunci bila rekaman satu paragraf utuh tersedia — kalau belum, dipakai kunci
+    per baris hasil render lama, disambung saat diputar.
+    """
+    indeks = indeks_audio()
+    hasil, grup = [], []
+    for i, p in enumerate(sumber):
+        ar = baris_audio(p)
+        if ar:
+            grup.append((i, ar))
+        tutup = grup and (not ar or bool(AKHIR_KALIMAT.search(p))
+                          or len(grup) >= MAKS_BARIS_BLOK or i == len(sumber) - 1)
+        if not tutup:
+            continue
+        gabung = kunci_audio(" ".join(a for _, a in grup))
+        if gabung in indeks:
+            potongan = (gabung,)                       # satu rekaman utuh
+        else:
+            potongan = tuple(k for k in (kunci_audio(a) for _, a in grup) if k in indeks)
+        if potongan:
+            hasil.append((grup[-1][0], potongan))
+        grup = []
+    return hasil
+
+
 def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
                      asli: str = ""):
     """Pembaca materi dengan tombol Dengarkan per paragraf utuh.
 
     Berkas materi memotong kalimat panjang menjadi beberapa baris, jadi baris
-    digabung dulu sampai bertemu titik — satu tombol menyuarakan satu paragraf
-    utuh, bukan penggalan baris. Rekaman dicari memakai teks ASLI dari berkas
-    materi (parameter `asli`), bukan teks yang sudah diberi harakat.
+    digabung dulu sampai bertemu titik. Rekaman dicari memakai teks ASLI dari
+    berkas materi (parameter `asli`), bukan teks yang sudah diberi harakat.
     """
     meta, body = split_header(text)
     mode = "kitab" if kitab else "malam"
@@ -1623,27 +1664,8 @@ def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
         if len(kasar) == len(paras):
             sumber = kasar
 
-    kunci_baris = []
-    for p in sumber:
-        ar = teks_untuk_audio(p)
-        kunci_baris.append(berkas_audio(ar) if ar else None)
-
-    # kelompokkan baris menjadi paragraf yang berakhir di titik
-    blok, tombol, grup, baris_akhir = [], {}, [], None
-    for i, p in enumerate(sumber):
-        if kunci_baris[i]:
-            grup.append(kunci_baris[i])
-            baris_akhir = i
-        if not grup:
-            continue
-        tutup = (not kunci_baris[i]
-                 or bool(AKHIR_KALIMAT.search(p))
-                 or len(grup) >= MAKS_BARIS_BLOK
-                 or i == len(sumber) - 1)
-        if tutup:
-            tombol[baris_akhir] = (len(blok), tuple(grup))
-            blok.append(tuple(grup))
-            grup, baris_akhir = [], None
+    blok = susun_blok(sumber)
+    tombol = {baris: (n, potongan) for n, (baris, potongan) in enumerate(blok)}
 
     putar = st.session_state.get("tts_putar")
     if blok:
@@ -1652,7 +1674,7 @@ def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
                       key=f"ttsallbtn_{mode}_{cat}", icon=":material/playlist_play:",
                       on_click=pilih_tts, args=(f"SEMUA_{cat}",))
             if putar == f"SEMUA_{cat}":
-                putar_blok(tuple(blok))
+                putar_blok(tuple(potongan for _, potongan in blok))
 
     with st.container(height=640, border=False, key=f"bacaan_{mode}_{cat}"):
         if meta:
@@ -1661,13 +1683,13 @@ def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
             st.markdown(f"<div class='doc {mode} doc-polos'>{_paragraf_html(p, '', ukuran)}</div>", unsafe_allow_html=True)
             if i not in tombol:
                 continue
-            nomor, grup_kunci = tombol[i]
+            nomor, potongan = tombol[i]
             kunci = f"{cat}_{nomor}"
             with st.container(key=f"ttsrow_{mode}_{kunci}"):
                 st.button(f"Dengarkan paragraf {nomor + 1}", key=f"ttsbtn_{mode}_{kunci}",
                           icon=":material/volume_up:", on_click=pilih_tts, args=(kunci,))
                 if putar == kunci:
-                    putar_blok((grup_kunci,))
+                    putar_blok((potongan,))
     if len(body) > limit:
         st.caption(f"… ditampilkan {limit:,} dari {len(body):,} karakter. Gunakan tab Cari / Tanya untuk bagian lainnya.")
 
@@ -2014,13 +2036,13 @@ def page_home(kb):
         "<div class='hero-top reveal'><span class='eyebrow'>Panduan debat bahasa Arab</span>"
         "<span class='hero-meta'>Format Qatar Debate · untuk pelajar, santri, dan mahasiswa</span></div>"
         f"<div class='hero-head'>{video_logo('hero-logo')}"
-        "<div class='hero-ar ink-in' dir='rtl' lang='ar'>أَتْقِنْ فَنَّ الْمُنَاظَرَةِ بِاللُّغَةِ الْعَرَبِيَّةِ</div></div>"
+        "<div class='hero-ar ink-in' dir='rtl' lang='ar'>أتقن فن المناظرة باللغة العربية</div></div>"
         "<div class='rule-draw'></div>"
         "<div class='hero-grid'><div>"
         "<p class='hero-lead reveal' style='--i:2'>Belajar debat bahasa Arab dari dasar: sistem, mosi, ibarah, kamus, dan muqaddimah. "
-        "Asisten MUNAZIR menjawab hanya dari materi, lengkap dengan teks Arab dan sumbernya.</p>"
+        "Asisten MUNĀẒIR menjawab hanya dari materi, lengkap dengan teks Arab dan sumbernya.</p>"
         "<div class='hero-cta reveal' style='--i:3'><a class='btn' href='sistem_debat' target='_self'>Mulai belajar</a>"
-        "<a class='btn-ghost' href='chat' target='_self'>Tanya MUNAZIR <span class='arr'>→</span></a></div>"
+        "<a class='btn-ghost' href='chat' target='_self'>Tanya MUNĀẒIR <span class='arr'>→</span></a></div>"
         "<dl class='stats reveal' style='--i:4'>"
         f"<div><dt>Materi</dt><dd>{angka(len(docs))}</dd></div>"
         f"<div><dt>Bagian</dt><dd>{angka(len(CATEGORIES))}</dd></div>"
@@ -2036,7 +2058,7 @@ def page_home(kb):
             f"<li class='reveal' style='--i:{i}'><a href='{cat}' target='_self' style='--c:{meta['warna']}'>"
             f"<span class='idx-n'>{i:02d}</span>"
             f"<span><span class='idx-t'>{esc(meta['label'])}</span><span class='idx-d'>{esc(meta['desc'])}</span></span>"
-            f"<span class='idx-ar' dir='rtl' lang='ar'>{esc(meta['ar'])}</span>"
+            f"<span class='idx-ar' dir='rtl' lang='ar'>{esc(tanpa_harakat(meta['ar']))}</span>"
             f"<span class='idx-c'>{n} materi</span><span class='idx-go' aria-hidden='true'>→</span></a></li>"
         )
     st.markdown(
@@ -2050,7 +2072,7 @@ def page_home(kb):
     if ibr:
         st.markdown(
             "<section class='quote reveal'><div>"
-            f"<div class='eyebrow'>Ibarah pilihan · {bungkus_arab(esc(ibr[0].replace('Ibārah untuk ', '')))}</div>"
+            f"<div class='eyebrow'>ʿIbārah pilihan · {bungkus_arab(esc(ibr[0].replace('Ibārah untuk ', '')))}</div>"
             f"<p class='q-id'>{fmt_campur(ibr[2])}</p></div>"
             f"<div class='q-ar' dir='rtl' lang='ar'>{esc(ibr[1])}</div></section>",
             unsafe_allow_html=True,
@@ -2077,8 +2099,8 @@ def page_home(kb):
     st.markdown(
         "<section class='band reveal'><span class='band-zha' aria-hidden='true'>ظ</span>"
         "<div><div class='band-t'>Bingung harus mulai dari mana?</div>"
-        "<p class='band-p'>Tanyakan langsung ke MUNAZIR. Jawaban dalam bahasa Indonesia, disertai teks Arab dan sumbernya.</p></div>"
-        "<a class='btn btn-light' href='chat' target='_self'>Buka Chat MUNAZIR</a></section>",
+        "<p class='band-p'>Tanyakan langsung ke MUNĀẒIR. Jawaban dalam bahasa Indonesia, disertai teks Arab dan sumbernya.</p></div>"
+        "<a class='btn btn-light' href='chat' target='_self'>Buka Chat MUNĀẒIR</a></section>",
         unsafe_allow_html=True,
     )
 
@@ -2095,8 +2117,8 @@ AVATAR_USER = ":material/person:"
 
 
 def page_chat():
-    page_header("Chat MUNAZIR", "حِوَارٌ مَعَ مُنَاظِرٍ",
-                "Tanyakan apa saja seputar materi debat. Jawaban hanya dari materi MUNAZIR, disertai teks Arab dan nama file sumbernya.", "Asisten")
+    page_header("Chat MUNĀẒIR", "حِوَارٌ مَعَ مُنَاظِرٍ",
+                "Tanyakan apa saja seputar materi debat. Jawaban hanya dari materi MUNĀẒIR, disertai teks Arab dan nama file sumbernya.", "Asisten")
     cek_api_key()
     history = st.session_state.setdefault("chat", [])
     if history:
@@ -2112,14 +2134,14 @@ def page_chat():
     if not history:
         with st.chat_message("assistant", avatar=AVATAR_AI):
             st.markdown(
-                "<b><span class='ar-in' lang='ar' dir='rtl'>السَّلَامُ عَلَيْكُمْ</span></b> — saya **MUNAZIR**, "
+                "<b><span class='ar-in' lang='ar' dir='rtl'>السَّلَامُ عَلَيْكُمْ</span></b> — saya **MUNĀẒIR**, "
                 "asisten debat bahasa Arab Anda. Silakan tanya tentang sistem debat, mosi, ibarah, kosakata, atau muqaddimah.",
                 unsafe_allow_html=True,
             )
         st.markdown("<div class='subhead'>Coba tanyakan</div>", unsafe_allow_html=True)
         with st.container(key="contoh_chat"):
             ex_cols = st.columns(3)
-            examples = ["Apa itu POI dan kapan boleh diajukan?", "Ibarah untuk menyanggah argumen lawan", "Contoh muqaddimah kontra pembicara kedua"]
+            examples = ["Apa itu POI dan kapan boleh diajukan?", "Ungkapan untuk menyanggah argumen lawan", "Contoh muqaddimah kontra pembicara kedua"]
             for c, ex in zip(ex_cols, examples):
                 if c.button(ex):
                     st.session_state["pending_q"] = ex
@@ -2157,7 +2179,7 @@ def page_category(cat: str, kb):
     nomor = list(CATEGORIES).index(cat) + 1
     page_header(meta["label"], meta["ar"], meta["desc"], f"Materi · {nomor:02d} dari {len(CATEGORIES):02d}")
     docs = [d for d in kb["docs"] if d["cat"] == cat]
-    t1, t2, t3 = st.tabs(["Baca materi", "Cari", "Tanya MUNAZIR"])
+    t1, t2, t3 = st.tabs(["Baca materi", "Cari", "Tanya MUNĀẒIR"])
 
     with t1:
         if not docs:
@@ -2206,7 +2228,7 @@ def page_category(cat: str, kb):
         if q:
             hits = search(kb, q, k=10, cats=[cat], min_score=0.02)
             if not hits:
-                st.warning("Tidak ditemukan. Coba kata kunci lain atau tanya MUNAZIR.")
+                st.warning("Tidak ditemukan. Coba kata kunci lain atau tanya MUNĀẒIR.")
             for h in hits:
                 st.markdown(
                     f"<div class='snip'><div class='h'><b>{bungkus_arab(esc(terapkan_harakat(h['sub'])))}</b> › {esc(h['source'])} · relevansi {h['score']:.2f}</div>"
@@ -2293,7 +2315,7 @@ def page_translate(kb):
 
 
 TIMER_HTML = """<!doctype html><html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
 <style>
 :root{--paper:#F3EDE1;--paper2:#FAF7F0;--ink:#1F1A14;--ink2:#463D33;--muted:#766A5C;--rule:#DBD1C0;--umber:#2B1F15;--cream:#F3E9D2;--brass:#C9A04E;--poi:#7FA58A;--stop:#D46A5A;--pro:#4E6B58;--kon:#9B4E3A}
 *{box-sizing:border-box}
@@ -2408,7 +2430,7 @@ def page_timer():
 
 def page_feedback():
     page_header("Respon Pengguna", "آرَاءُ الْمُسْتَخْدِمِينَ",
-                "Bagikan pengalaman, kritik, dan saran Anda tentang website MUNAZIR.", "Tentang")
+                "Bagikan pengalaman, kritik, dan saran Anda tentang website MUNĀẒIR.", "Tentang")
     url = (_secret("FORM_URL") or FORM_URL).strip()
     if not url:
         st.info("Formulir respon belum diatur. Isi `FORM_URL` di app.py dengan link Google Form.")
@@ -2417,7 +2439,7 @@ def page_feedback():
         url = "https://" + url
     if "docs.google.com/forms" in url and "embedded=true" not in url:
         url += ("&" if "?" in url else "?") + "embedded=true"
-    st.markdown("Terima kasih telah menggunakan **MUNAZIR**. Respon Anda membantu kami memperbaiki website ini.")
+    st.markdown("Terima kasih telah menggunakan **MUNĀẒIR**. Respon Anda membantu kami memperbaiki website ini.")
     import streamlit.components.v1 as components
     components.iframe(url, height=1100, scrolling=True)
     st.link_button("Formulir tidak muncul? Buka di tab baru ↗", url.replace("embedded=true", "").rstrip("?&"))
@@ -2441,7 +2463,7 @@ def link_kontak(jenis: str, nilai: str) -> str:
 
 
 def page_profile():
-    page_header("Profil Pengembang", "عَنِ الْمُطَوِّرِ", "Mengenal pengembang di balik MUNAZIR.", "Tentang")
+    page_header("Profil Pengembang", "عَنِ الْمُطَوِّرِ", "Mengenal pengembang di balik MUNĀẒIR.", "Tentang")
     p = PROFIL
     if FOTO_PENGEMBANG:
         img = f"<img src='data:image/jpeg;base64,{FOTO_PENGEMBANG}' alt='Foto {esc(p['nama'])}'>"
@@ -2497,7 +2519,7 @@ def panel_harakat_admin(kb):
 
 
 def page_manage(kb):
-    page_header("Kelola Materi", "إِدَارَةُ الْمَوَادِّ", "Unggah file PDF / DOCX / TXT sebagai basis pengetahuan MUNAZIR.", "Admin")
+    page_header("Kelola Materi", "إِدَارَةُ الْمَوَادِّ", "Unggah file PDF / DOCX / TXT sebagai basis pengetahuan MUNĀẒIR.", "Admin")
     admin_pw = _secret("ADMIN_PASSWORD")
     if admin_pw and not st.session_state.get("admin_ok"):
         pw = st.text_input("Kata sandi admin", type="password")
@@ -2580,7 +2602,7 @@ def halaman(fungsi, judul, alamat, ikon_menu=None, default=False):
 
 
 def main():
-    st.set_page_config(page_title="MUNAZIR · مُنَاظِرٌ", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
+    st.set_page_config(page_title="MUNĀẒIR · مُنَاظِرٌ", page_icon="🕌", layout="wide", initial_sidebar_state="collapsed")
     st.markdown(CSS, unsafe_allow_html=True)
     st.session_state.setdefault("uploads", [])
     # Harakat untuk seluruh materi dibuat otomatis di latar belakang (pengunjung tidak menunggu)
@@ -2596,7 +2618,7 @@ def main():
         if vid:
             st.markdown(
                 f"<div class='splash' style='--t:{SPLASH_DETIK}s' aria-hidden='true'>{vid}"
-                "<div class='splash-nama'>MUNAZIR<span lang='ar'>مُنَاظِرٌ</span></div></div>",
+                "<div class='splash-nama'>MUNĀẒIR<span lang='ar'>مناظر</span></div></div>",
                 unsafe_allow_html=True,
             )
     try:
@@ -2611,7 +2633,7 @@ def main():
     menu = {
         "": [
             halaman(lambda: page_home(get_kb()), "Beranda", "beranda", ":material/home:", default=True),
-            halaman(page_chat, "Chat MUNAZIR", "chat", ":material/forum:"),
+            halaman(page_chat, "Chat MUNĀẒIR", "chat", ":material/forum:"),
         ],
         "Materi": halaman_materi,
         "Alat": [
@@ -2627,7 +2649,7 @@ def main():
     st.navigation(menu, position="top").run()
 
     st.markdown(
-        f"<footer class='foot'><span><b>MUNAZIR</b><span class='ar-in' lang='ar' dir='rtl'>مُنَاظِرٌ</span> · Panduan debat bahasa Arab</span>"
+        f"<footer class='foot'><span><b>MUNĀẒIR</b><span class='ar-in' lang='ar' dir='rtl'>مُنَاظِرٌ</span> · Panduan debat bahasa Arab</span>"
         f"<span>Dikembangkan oleh {esc(PROFIL['nama'])}</span></footer>",
         unsafe_allow_html=True,
     )
