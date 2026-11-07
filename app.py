@@ -57,7 +57,7 @@ CATEGORIES = {
     "ibarah": {
         "warna": "#9B4E3A",
         "warna_teks": "#7E3E2D",
-        "label": "ʿIbārah",
+        "label": "Ibārah",
         "ar": "الْعِبَارَاتُ",
         "icon": "",
         "desc": "Bank ibārah: membuka, berargumen, memberi bukti, menyanggah, bertanya, dan menutup pidato.",
@@ -300,13 +300,33 @@ def split_header(text: str):
     return {}, text
 
 
+# Ejaan transliterasi Latin mengikuti Pedoman SKB Menag 158/1987 yang dipakai
+# buku MIZAN. Judul berkas dan baris MENU lama ditulis tanpa tanda panjang;
+# di sini diseragamkan saat ditampilkan, tanpa menyunting berkas materinya.
+EJAAN_LATIN = {
+    "Ibarah": "Ibārah",
+    "Mufradat": "Mufradāt",
+    "Kosa Kata": "Kosakata",
+    "Muqadimah": "Muqaddimah",
+    "Qadhiyyah": "Qaḍiyyah",
+    "Hujjah": "Ḥujjah",
+}
+_EJAAN_RE = re.compile(r"\b(" + "|".join(sorted(EJAAN_LATIN, key=len, reverse=True)) + r")\b")
+
+
+def rapikan_ejaan(t: str) -> str:
+    """Seragamkan transliterasi Arab-Latin pada teks yang tampil di layar."""
+    return _EJAAN_RE.sub(lambda m: EJAAN_LATIN[m.group(0)], t or "")
+
+
 def make_doc(cat, sub, source, text, origin):
     meta, _ = split_header(text)
     menu = meta.get("MENU", "")
     if "›" in menu:  # nama subtopik lengkap (dengan bahasa Arab) diambil dari header file
         sub = menu.split("›", 1)[1].strip() or sub
-    return {"cat": cat, "sub": sub, "source": source, "text": text, "origin": origin,
-            "title": meta.get("JUDUL", source)}
+    return {"cat": cat, "sub": rapikan_ejaan(sub), "source": rapikan_ejaan(source),
+            "text": text, "origin": origin,
+            "title": rapikan_ejaan(meta.get("JUDUL", source))}
 
 
 @st.cache_data(show_spinner=False)
@@ -1590,8 +1610,8 @@ def _kepala_doc(meta: dict) -> str:
     if not meta:
         return ""
     return (
-        f"<div class='doc-head'><div class='mt' dir='auto'>{bungkus_arab(esc(meta.get('JUDUL', '')))}</div>"
-        f"<div class='mm'><b>Menu</b>{bungkus_arab(esc(meta.get('MENU', '')))}</div>"
+        f"<div class='doc-head'><div class='mt' dir='auto'>{bungkus_arab(esc(rapikan_ejaan(meta.get('JUDUL', ''))))}</div>"
+        f"<div class='mm'><b>Menu</b>{bungkus_arab(esc(rapikan_ejaan(meta.get('MENU', ''))))}</div>"
         f"<div class='mm'><b>Sumber</b>{bungkus_arab(esc(meta.get('SUMBER', '')))}</div></div>"
     )
 
@@ -2079,7 +2099,7 @@ def page_home(kb):
     if ibr:
         st.markdown(
             "<section class='quote reveal'><div>"
-            f"<div class='eyebrow'>ʿIbārah pilihan · {bungkus_arab(esc(ibr[0].replace('Ibārah untuk ', '')))}</div>"
+            f"<div class='eyebrow'>Ibārah pilihan · {bungkus_arab(esc(ibr[0].replace('Ibārah untuk ', '')))}</div>"
             f"<p class='q-id'>{fmt_campur(ibr[2])}</p></div>"
             f"<div class='q-ar' dir='rtl' lang='ar'>{esc(ibr[1])}</div></section>",
             unsafe_allow_html=True,
