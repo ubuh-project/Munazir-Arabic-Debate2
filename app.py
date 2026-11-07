@@ -1353,7 +1353,11 @@ div:has(> [class*="st-key-bacaan_malam"]){ background:var(--umber); border-radiu
 .hero-grid{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:clamp(1.8rem, 5vw, 4.5rem); margin-top:2.2rem; align-items:start; }
 .hero-lead{ font-family:var(--serif); font-size:clamp(1.2rem, 2.2vw, 1.45rem); line-height:1.5; color:var(--ink); margin:0 0 1.8rem; max-width:34ch; }
 .hero-head{ display:flex; align-items:center; gap:clamp(1rem, 3vw, 2.6rem); margin:0 0 1.2rem; }
-.hero-head .hero-ar{ flex:1; min-width:0; margin:0; }
+.hero-head .hero-teks{ flex:1; min-width:0; }
+.hero-head .hero-ar{ margin:0; }
+/* Arti baris Arab besar — menempel di bawahnya, rata kanan mengikuti teks Arab */
+.hero-arti{ font-family:var(--serif); font-style:italic; font-size:clamp(1rem, 1.7vw, 1.2rem);
+  line-height:1.45; color:var(--ink-2); text-align:right; margin:.1rem 0 0; }
 .hero-logo{ flex:none; width:clamp(120px, 18vw, 230px); height:auto; }
 .intro .hero-logo{ animation:logo-in 1s var(--ease) both; }
 /* logo WebP sudah transparan; khusus video cadangan (berlatar krem), tepinya dibuat lembut */
@@ -1462,7 +1466,7 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 7
   .steps{ grid-template-columns:1fr; }
   .pf{ grid-template-columns:1fr; }
   .hero-head{ flex-direction:column; align-items:center; }
-  .hero-head .hero-ar{ width:100%; }
+  .hero-head .hero-teks{ width:100%; } .hero-head .hero-ar{ width:100%; }
   .doc.kitab{ padding:1.8rem 1.1rem; }
   [class*="st-key-bacaan_"]{ padding:1.4rem .9rem 1.8rem; }
 }
@@ -2036,7 +2040,10 @@ def page_home(kb):
         "<div class='hero-top reveal'><span class='eyebrow'>Panduan debat bahasa Arab</span>"
         "<span class='hero-meta'>Format Qatar Debate · untuk pelajar, santri, dan mahasiswa</span></div>"
         f"<div class='hero-head'>{video_logo('hero-logo')}"
-        "<div class='hero-ar ink-in' dir='rtl' lang='ar'>أتقن فن المناظرة باللغة العربية</div></div>"
+        "<div class='hero-teks'>"
+        "<div class='hero-ar ink-in' dir='rtl' lang='ar'>أتقن فن المناظرة باللغة العربية</div>"
+        "<p class='hero-arti reveal' style='--i:1'>Kuasailah seni berdebat dalam bahasa Arab</p>"
+        "</div></div>"
         "<div class='rule-draw'></div>"
         "<div class='hero-grid'><div>"
         "<p class='hero-lead reveal' style='--i:2'>Belajar debat bahasa Arab dari dasar: sistem, mosi, ibarah, kamus, dan muqaddimah. "
