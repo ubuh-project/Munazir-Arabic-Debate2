@@ -1704,14 +1704,13 @@ AUDIO_DIR = STATIC_DIR / "audio"
 
 
 @st.cache_resource(show_spinner=False)
-def _indeks_audio(_tanda: str) -> dict:
-    """Peta kunci -> (arsip, nama berkas). Menerima .mp3 lepas maupun di dalam .zip."""
+def _indeks_audio(tanda: str) -> dict:
+    """Peta kunci -> (arsip, nama). Berkas dicari di seluruh folder proyek,
+    jadi letaknya boleh di static/audio/, audio/, atau di mana pun."""
     peta = {}
-    if not AUDIO_DIR.exists():
-        return peta
-    for berkas in sorted(AUDIO_DIR.glob("*.mp3")):
+    for berkas in sorted(APP_DIR.rglob("*.mp3")):
         peta[berkas.stem] = (None, str(berkas))
-    for arsip in sorted(AUDIO_DIR.glob("*.zip")):
+    for arsip in sorted(APP_DIR.rglob("*.zip")):
         try:
             with zipfile.ZipFile(arsip) as z:
                 for nama in z.namelist():
@@ -1725,8 +1724,8 @@ def _indeks_audio(_tanda: str) -> dict:
 
 def indeks_audio() -> dict:
     try:
-        tanda = "|".join(f"{p.name}:{p.stat().st_size}"
-                         for p in sorted(AUDIO_DIR.glob("*.zip")))
+        tanda = "|".join(f"{p.relative_to(APP_DIR)}:{p.stat().st_size}"
+                         for p in sorted(APP_DIR.rglob("*.zip")))
     except OSError:
         tanda = ""
     return _indeks_audio(tanda)
@@ -1755,8 +1754,18 @@ def baca_audio(kunci: str) -> bytes:
 
 
 def pilihan_suara():
-    """Keterangan pemilik suara (tidak ada lagi pilihan mesin TTS)."""
-    st.caption(f"Suara: {PROFIL['nama']}")
+    """Keterangan pemilik suara, atau petunjuk bila rekaman belum terpasang."""
+    jumlah = len(indeks_audio())
+    if jumlah:
+        st.caption(f"Suara: {PROFIL['nama']} · {jumlah} rekaman")
+        return
+    arsip = sorted(p.relative_to(APP_DIR).as_posix() for p in APP_DIR.rglob("*.zip"))
+    st.warning(
+        "Berkas rekaman belum ditemukan di repositori. "
+        + (f"Arsip yang terbaca: {', '.join(arsip)}" if arsip
+           else "Tidak ada satu pun berkas .zip di repositori — "
+                "unggah audio_01.zip … audio_08.zip ke folder static/audio/.")
+    )
 
 
 def putar_audio_arab(teks: str, autoplay: bool = True):
