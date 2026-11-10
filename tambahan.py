@@ -81,13 +81,13 @@ EMAS, EMAS_BG = "#C6A15B", "#F6EFDF"
 
 
 def _kotak(x, y, w, h, arab="", judul="", baris=(), garis="var(--rule)", isi="var(--paper-2)",
-           warna_ar="var(--brass-ink)"):
+           warna_ar="var(--brass-ink)", ukuran_ar=16):
     """Satu kotak diagram: teks Arab di atas, judul Latin, lalu keterangan."""
     g = [f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="9" fill="{isi}" stroke="{garis}" stroke-width="1.2"/>']
     cx = x + w / 2
     ty = y + 30
     if arab:
-        g.append(f'<text x="{cx}" y="{ty}" text-anchor="middle" font-size="16" fill="{warna_ar}" '
+        g.append(f'<text x="{cx}" y="{ty}" text-anchor="middle" font-size="{ukuran_ar}" fill="{warna_ar}" '
                  f'font-family="Amiri, serif" direction="rtl">{arab}</text>')
         ty += 26
     if judul:
@@ -221,7 +221,7 @@ def _svg_analisis_mosi() -> str:
         x = i * 186.7
         cx = x + 80
         g.append(f'<line x1="{cx:.1f}" y1="74" x2="{cx:.1f}" y2="96" stroke="{EMAS}" stroke-width="1.3"/>')
-        g.append(_kotak(x, 96, 160, 124, ar, judul, baris))
+        g.append(_kotak(x, 96, 160, 124, ar, judul, baris, ukuran_ar=13))
     g.append("</svg>")
     return "".join(g)
 
@@ -289,23 +289,25 @@ def _svg_fungsi_ibarah() -> str:
 def _svg_kriteria_penilaian() -> str:
     isi = [("الْمُحْتَوَى", "Isi", 40, "Kekuatan argumen, alasan, dan bukti"),
            ("الْأُسْلُوبُ", "Gaya", 40, "Suara, bahasa, kontak mata, dan percaya diri"),
-           ("الاِسْتِرَاتِيجِيَّةُ", "Strategi", 20, "Ketepatan peran, prioritas, dan pengaturan waktu")]
-    g = ['<svg viewBox="0 0 720 206" xmlns="http://www.w3.org/2000/svg" role="img" '
+           ("الاِسْتِرَاتِيجِيَّةُ", "Strategi", 20, "Ketepatan peran, prioritas, dan waktu")]
+    X_BATANG, L_BATANG = 290, 390          # batang nilai mulai di 290, panjang penuh 390
+    SKALA = L_BATANG / 40.0
+    g = ['<svg viewBox="0 0 720 234" xmlns="http://www.w3.org/2000/svg" role="img" '
          'aria-label="Bobot kriteria penilaian debat">']
     for i, (ar, judul, nilai, ket) in enumerate(isi):
-        y = i * 66
-        lebar = nilai * 12.0
-        g.append(f'<text x="0" y="{y + 20}" font-size="12.5" font-weight="600" fill="var(--ink)" '
+        y = i * 76
+        g.append(f'<text x="0" y="{y + 24}" font-size="13" font-weight="600" fill="var(--ink)" '
                  f'font-family="IBM Plex Sans, sans-serif">{esc(judul)}</text>')
-        g.append(f'<text x="0" y="{y + 38}" font-size="10.5" fill="var(--muted)" '
-                 f'font-family="IBM Plex Sans, sans-serif">{esc(ket)}</text>')
-        g.append(f'<text x="195" y="{y + 28}" text-anchor="end" font-size="15" fill="var(--brass-ink)" '
+        g.append(f'<text x="265" y="{y + 26}" text-anchor="end" font-size="15" fill="var(--brass-ink)" '
                  f'font-family="Amiri, serif" direction="rtl">{ar}</text>')
-        g.append(f'<rect x="210" y="{y + 8}" width="480" height="30" rx="6" fill="var(--paper-3)"/>')
-        g.append(f'<rect x="210" y="{y + 8}" width="{lebar:.0f}" height="30" rx="6" fill="{EMAS_BG}" '
-                 f'stroke="{EMAS}" stroke-width="1.1"/>')
-        g.append(f'<text x="{210 + lebar + 12:.0f}" y="{y + 28}" font-size="13" fill="var(--ink)" '
-                 f'font-family="Newsreader, Georgia, serif">{nilai}</text>')
+        g.append(f'<text x="0" y="{y + 45}" font-size="10.5" fill="var(--muted)" '
+                 f'font-family="IBM Plex Sans, sans-serif">{esc(ket)}</text>')
+        g.append(f'<rect x="{X_BATANG}" y="{y + 10}" width="{L_BATANG}" height="30" rx="6" '
+                 f'fill="var(--paper-3)"/>')
+        g.append(f'<rect x="{X_BATANG}" y="{y + 10}" width="{nilai * SKALA:.0f}" height="30" rx="6" '
+                 f'fill="{EMAS_BG}" stroke="{EMAS}" stroke-width="1.1"/>')
+        g.append(f'<text x="{X_BATANG + nilai * SKALA - 14:.0f}" y="{y + 30}" text-anchor="end" '
+                 f'font-size="13" fill="var(--ink)" font-family="Newsreader, Georgia, serif">{nilai}</text>')
     g.append("</svg>")
     return "".join(g)
 
