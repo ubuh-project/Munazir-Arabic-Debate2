@@ -912,3 +912,75 @@ def page_kamus(docs: list):
         st.markdown(f"<div class='kms-h'>{esc(pilih)} · {len(isi)} entri</div>", unsafe_allow_html=True)
         for e in isi:
             st.markdown(_kartu(e), unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────
+# 8. KOLOM KAMUS DI BERANDA
+#    Pita ramping menyatu dengan panel hero zamrud, memakai basis
+#    data entri yang sama dengan halaman Kamus Debat.
+# ─────────────────────────────────────────────────────────────
+_CSS_BERANDA = """
+<style>
+/* Hero dibuat bersudut tumpul hanya di atas, agar pita kamus menyambungnya. */
+.hero{ border-radius:16px 16px 0 0 !important; }
+.st-key-kamusbar{ background:var(--umber); color:var(--cream);
+  border-radius:0 0 16px 16px; margin-top:-2.2rem; padding:2.2rem clamp(1.2rem,4vw,2.8rem) 1.5rem; }
+.st-key-kamusbar label{ color:#9FB3A6 !important; }
+.st-key-kamusbar input{ background:rgba(244,240,231,.07) !important; color:var(--cream) !important;
+  border:1px solid rgba(198,161,91,.45) !important; }
+.st-key-kamusbar input::placeholder{ color:#7E9388 !important; }
+.st-key-kamusbar [data-testid="stTextInputRootElement"]{ background:transparent !important;
+  border-color:rgba(198,161,91,.45) !important; }
+.kmb-t{ font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; font-weight:600;
+  color:var(--brass); margin:0 0 .55rem; }
+.kmb-r{ display:flex; align-items:center; gap:1rem; padding:.55rem 0;
+  border-top:1px solid rgba(244,240,231,.14); }
+.kmb-r:first-of-type{ border-top:0; }
+.kmb-r .i{ flex:1; min-width:0; color:var(--cream); font-size:.97rem; line-height:1.4; }
+.kmb-r .i small{ display:block; color:#7E9388; font-size:.7rem; letter-spacing:.1em;
+  text-transform:uppercase; margin-top:.1rem; }
+.kmb-r .a{ font-family:var(--arab); font-size:1.5rem; line-height:2; color:var(--cream);
+  direction:rtl; text-align:right; white-space:nowrap; }
+.kmb-n{ font-size:.8rem; color:#9FB3A6; margin-top:.7rem; }
+.kmb-n a{ color:var(--brass); border-bottom:1px solid rgba(198,161,91,.5); text-decoration:none; }
+</style>
+"""
+
+
+def kamus_beranda(docs: list):
+    """Kolom pencarian kamus ramping di bawah hero beranda."""
+    bahan = tuple((d.get("title") or d.get("source", ""), d.get("text", ""))
+                  for d in docs if d.get("cat") == "kosakata")
+    if not bahan:
+        return
+    entri = susun_kamus(bahan)
+    if not entri:
+        return
+    st.markdown(_CSS_BERANDA, unsafe_allow_html=True)
+    with st.container(key="kamusbar"):
+        st.markdown("<div class='kmb-t'>Kamus cepat</div>", unsafe_allow_html=True)
+        q = st.text_input(
+            "Cari kosakata",
+            key="kamus_hero",
+            placeholder=f"Cari di {len(entri)} kosakata debat — argumen, حُجَّة, menyanggah …",
+            label_visibility="collapsed",
+        )
+        if not q or not q.strip():
+            return
+        hasil = _cocok(entri, q, "Otomatis")
+        if not hasil:
+            st.markdown("<div class='kmb-n'>Tidak ada yang cocok. Coba kata dasarnya.</div>",
+                        unsafe_allow_html=True)
+            return
+        for e in hasil[:5]:
+            st.markdown(
+                f"<div class='kmb-r'><div class='i'>{esc(e['idn'])}"
+                f"<small>{esc(e['tema'])}</small></div>"
+                f"<div class='a' lang='ar'>{e['arab']}</div></div>",
+                unsafe_allow_html=True,
+            )
+        sisa = len(hasil) - 5
+        lanjut = (f"{sisa} entri lainnya · " if sisa > 0 else "")
+        st.markdown(f"<div class='kmb-n'>{lanjut}"
+                    "<a href='kosakata' target='_self'>buka Kamus Debat</a></div>",
+                    unsafe_allow_html=True)
