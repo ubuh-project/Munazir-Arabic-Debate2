@@ -24,6 +24,12 @@ import streamlit as st
 # UTILITAS KECIL (berdiri sendiri, tidak mengimpor app.py)
 # ─────────────────────────────────────────────────────────────
 HURUF_ARAB = re.compile(r"[\u0600-\u06FF]")
+# Tajuk Arab di situs ini ditulis tanpa harakat (font Aref Ruqaa).
+HARAKAT = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]")
+
+
+def tanpa_harakat(t: str) -> str:
+    return HARAKAT.sub("", t or "")
 
 
 def esc(t: str) -> str:
@@ -37,7 +43,7 @@ _CSS = """
 .gbr-h{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center;
         gap:.4rem 1rem; margin-bottom:1rem; }
 .gbr-t{ font-family:var(--serif); font-size:1.08rem; color:var(--ink); line-height:1.25; }
-.gbr-a{ font-family:var(--arab); font-size:1.15rem; color:var(--brass-ink); line-height:2.1; }
+.gbr-a{ font-family:var(--arab-judul); font-size:1.3rem; color:var(--brass-ink); line-height:2.1; }
 .gbr svg{ width:100%; height:auto; display:block; }
 .gbr-n{ font-size:.84rem; color:var(--muted); margin-top:.85rem; line-height:1.65; }
 .gbr-n b{ color:var(--brass-ink); font-weight:600; }
@@ -248,7 +254,7 @@ def _svg_struktur_muqaddimah() -> str:
         g.append(f'<text x="68" y="{y + 37}" font-size="10.5" fill="var(--muted)" '
                  f'font-family="IBM Plex Sans, sans-serif">{esc(ket)}</text>')
         g.append(f'<text x="704" y="{y + 30}" text-anchor="end" font-size="16" fill="var(--brass-ink)" '
-                 f'font-family="Amiri, serif" direction="rtl">{ar}</text>')
+                 f'font-family="Amiri, serif">{ar}</text>')
         if i < 4:
             g.append(f'<line x1="22" y1="{y + 39}" x2="22" y2="{y + 63}" stroke="{EMAS}" '
                      f'stroke-width="1.1" stroke-dasharray="3 3"/>')
@@ -290,7 +296,7 @@ def _svg_kriteria_penilaian() -> str:
     isi = [("الْمُحْتَوَى", "Isi", 40, "Kekuatan argumen, alasan, dan bukti"),
            ("الْأُسْلُوبُ", "Gaya", 40, "Suara, bahasa, kontak mata, dan percaya diri"),
            ("الاِسْتِرَاتِيجِيَّةُ", "Strategi", 20, "Ketepatan peran, prioritas, dan waktu")]
-    X_BATANG, L_BATANG = 290, 390          # batang nilai mulai di 290, panjang penuh 390
+    X_BATANG, L_BATANG = 300, 380          # batang nilai mulai di 300, panjang penuh 380
     SKALA = L_BATANG / 40.0
     g = ['<svg viewBox="0 0 720 234" xmlns="http://www.w3.org/2000/svg" role="img" '
          'aria-label="Bobot kriteria penilaian debat">']
@@ -298,8 +304,8 @@ def _svg_kriteria_penilaian() -> str:
         y = i * 76
         g.append(f'<text x="0" y="{y + 24}" font-size="13" font-weight="600" fill="var(--ink)" '
                  f'font-family="IBM Plex Sans, sans-serif">{esc(judul)}</text>')
-        g.append(f'<text x="265" y="{y + 26}" text-anchor="end" font-size="15" fill="var(--brass-ink)" '
-                 f'font-family="Amiri, serif" direction="rtl">{ar}</text>')
+        g.append(f'<text x="250" y="{y + 26}" text-anchor="end" font-size="15" fill="var(--brass-ink)" '
+                 f'font-family="Amiri, serif">{ar}</text>')
         g.append(f'<text x="0" y="{y + 45}" font-size="10.5" fill="var(--muted)" '
                  f'font-family="IBM Plex Sans, sans-serif">{esc(ket)}</text>')
         g.append(f'<rect x="{X_BATANG}" y="{y + 10}" width="{L_BATANG}" height="30" rx="6" '
@@ -353,7 +359,7 @@ def gambar(nama: str):
     judul, arab, buat, catatan = GAMBAR[nama]
     st.markdown(
         f"<div class='gbr'><div class='gbr-h'><div class='gbr-t'>{esc(judul)}</div>"
-        f"<div class='gbr-a' dir='rtl' lang='ar'>{arab}</div></div>"
+        f"<div class='gbr-a' dir='rtl' lang='ar'>{tanpa_harakat(arab)}</div></div>"
         f"{buat()}<div class='gbr-n'>{catatan}</div></div>",
         unsafe_allow_html=True,
     )
