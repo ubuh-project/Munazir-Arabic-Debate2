@@ -1837,6 +1837,9 @@ def siapkan_harakat_materi(doc) -> str:
 # di static/audio/. Website hanya memutar berkas, tidak memanggil AI.
 # ─────────────────────────────────────────────────────────────
 AUDIO_DIR = STATIC_DIR / "audio"
+# Hanya dua kategori ini yang direkam suaranya; halaman lain tidak menampilkan
+# pilihan audio sama sekali agar tidak menjanjikan sesuatu yang tidak ada.
+KATEGORI_AUDIO = ("ibarah", "kosakata")
 
 
 @st.cache_resource(show_spinner=False)
@@ -2275,13 +2278,20 @@ def page_category(cat: str, kb):
                             label = (("→ " if i == pick else "") + terapkan_harakat(d["source"])
                                      + (" · unggahan" if d["origin"] != "repo" else ""))
                             st.button(label, key=f"tocbtn_{cat}_{sub_sel}_{i}", on_click=pilih_materi, args=(pick_key, i))
-            o1, o2, o3 = st.columns([1, 1.4, 0.8])
+            ada_rekaman = cat in KATEGORI_AUDIO
+            if ada_rekaman:
+                o1, o2, o3 = st.columns([1, 1.4, 0.8])
+            else:
+                o1, o2 = st.columns([1, 2.2])
+                o3 = None
             mode = o1.radio("Tampilan baca", ["Kertas", "Malam"], horizontal=True, key="mode_baca_v2")
             ukuran = o2.slider("Ukuran teks Arab", 20, 36, 26, key="ukuran_arab")
-            pakai_audio = o3.toggle("Audio", value=True, key="audio_doc",
-                                    help="Tampilkan tombol Dengarkan di setiap paragraf berbahasa Arab.")
-            if pakai_audio:
-                pilihan_suara()
+            pakai_audio = False
+            if ada_rekaman:
+                pakai_audio = o3.toggle("Audio", value=True, key="audio_doc",
+                                        help="Tampilkan tombol Dengarkan di setiap paragraf berbahasa Arab.")
+                if pakai_audio:
+                    pilihan_suara()
             doc = shown[pick]
             teks = siapkan_harakat_materi(doc)
             if pakai_audio:
@@ -2367,14 +2377,6 @@ def page_translate(kb):
         else:
             st.markdown(f"<div class='id-box'><div class='eyebrow'>Hasil terjemahan</div>{fmt_campur(tr)}</div>", unsafe_allow_html=True)
         st.code(tr, language=None)
-        teks_suara = tr if is_mostly_arabic(tr) else (res.get("ASAL", "") if is_mostly_arabic(res.get("ASAL", "")) else "")
-        if teks_suara and berkas_audio(teks_suara):
-            st.markdown("<div class='subhead'>Dengarkan teks Arab</div>", unsafe_allow_html=True)
-            pilihan_suara()
-            if st.button("Dengarkan", key="tts_terjemahan", icon=":material/volume_up:"):
-                st.session_state["tts_terjemahan_on"] = True
-            if st.session_state.get("tts_terjemahan_on"):
-                putar_audio_arab(teks_suara)
         note = res.get("CATATAN", "").strip()
         if note and note != "-":
             with st.expander("Catatan istilah"):
