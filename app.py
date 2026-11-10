@@ -2116,6 +2116,8 @@ def page_home(kb):
         unsafe_allow_html=True,
     )
 
+    tambahan.kamus_beranda(kb["docs"])
+
     baris = ""
     for i, (cat, meta) in enumerate(CATEGORIES.items(), 1):
         n = sum(1 for d in docs if d["cat"] == cat)
