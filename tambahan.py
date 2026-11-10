@@ -70,6 +70,17 @@ _CSS = """
 .menang .k{ font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:#9FB3A6; font-weight:600; }
 .menang .v{ font-family:var(--serif); font-size:1.9rem; line-height:1.2; margin-top:.35rem; }
 .menang .s{ color:#DCE7DF; font-size:.9rem; margin-top:.45rem; }
+
+.kms{ display:flex; align-items:center; gap:1rem; background:var(--paper-2);
+      border:1px solid var(--rule); border-radius:8px; padding:.7rem 1rem; margin:0 0 .45rem; }
+.kms .idn{ flex:1; min-width:0; color:var(--ink); font-size:1rem; line-height:1.45; }
+.kms .arb{ font-family:var(--arab); font-size:1.55rem; line-height:2.1; color:var(--ink);
+           direction:rtl; text-align:right; white-space:nowrap; }
+.kms .tma{ font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+           display:block; margin-top:.15rem; }
+.kms-h{ font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; font-weight:600;
+        color:var(--brass-ink); margin:1.2rem 0 .5rem; }
+.kms-h:first-child{ margin-top:.2rem; }
 </style>
 """
 
@@ -604,7 +615,6 @@ def panel_atas(cat: str):
     panel_video(cat)
     if cat in ("ibarah", "kosakata"):
         panel_angka()
-    sakelar_kamus(cat)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -776,3 +786,129 @@ def page_penilaian():
     )
     st.caption("Angka di sini adalah latihan penjurian, bukan hasil resmi lomba. "
                "Setiap juri lomba tetap wajib menulis catatan alasan di samping skornya.")
+
+
+# ─────────────────────────────────────────────────────────────
+# 7. KAMUS DEBAT — basis data entri + kolom pencarian dua arah
+#    Materi kosakata tidak lagi ditampilkan sebagai bacaan; isinya
+#    diurai jadi entri dan hanya dibuka lewat pencarian.
+# ─────────────────────────────────────────────────────────────
+PEMISAH_JUDUL = re.compile(r"^={10,}\s*$", re.M)
+HURUF_ARAB_DASAR = re.compile(r"[\u0621-\u063A\u0641-\u064A]")
+
+
+def _badan(teks: str) -> str:
+    bagian = PEMISAH_JUDUL.split(teks or "", maxsplit=1)
+    return bagian[1] if len(bagian) == 2 else (teks or "")
+
+
+def _polos_arab(t: str) -> str:
+    """Samakan bentuk huruf agar pencarian tidak gagal karena harakat atau hamzah."""
+    t = tanpa_harakat(t)
+    for a, b in (("أإآٱ", "ا"), ("ى", "ي"), ("ة", "ه"), ("ؤ", "و"), ("ئ", "ي")):
+        for c in a:
+            t = t.replace(c, b)
+    # "ال" di awal kata dilepas agar الحجة juga menemukan حجة
+    kata = [k[2:] if k.startswith("ال") and len(k) > 4 else k for k in t.split()]
+    return re.sub(r"\s+", " ", " ".join(kata)).strip()
+
+
+@st.cache_data(show_spinner=False)
+def susun_kamus(bahan: tuple) -> list:
+    """Ubah berkas kosakata menjadi daftar entri {idn, arab, tema, sumber}."""
+    entri, terlihat = [], set()
+    for judul, teks in bahan:
+        tema = judul
+        for baris in _badan(teks).split("\n"):
+            b = baris.strip()
+            if not b:
+                continue
+            if " : " not in b:
+                # baris tanpa pemisah dianggap tajuk tema, misalnya "AGAMA DAN PEMIKIRAN"
+                if len(b) < 60 and not HURUF_ARAB_DASAR.search(b):
+                    tema = b.title()
+                continue
+            kiri, kanan = [x.strip() for x in b.split(" : ", 1)]
+            if not kiri or not kanan:
+                continue
+            # pola berkas MIZAN adalah "Indonesia : عربي"; bila terbalik, ditukar
+            if HURUF_ARAB_DASAR.search(kiri) and not HURUF_ARAB_DASAR.search(kanan):
+                kiri, kanan = kanan, kiri
+            if not HURUF_ARAB_DASAR.search(kanan):
+                continue
+            kunci = (kiri.lower(), _polos_arab(kanan))
+            if kunci in terlihat:
+                continue
+            terlihat.add(kunci)
+            entri.append({"idn": kiri, "arab": kanan, "tema": tema,
+                          "idn_cari": kiri.lower(), "arab_cari": _polos_arab(kanan)})
+    return entri
+
+
+def _cocok(entri: list, q: str, arah: str) -> list:
+    """Urutkan hasil: sama persis dulu, lalu berawalan, lalu mengandung."""
+    arab = bool(HURUF_ARAB_DASAR.search(q))
+    if arah == "Indonesia → Arab":
+        arab = False
+    elif arah == "Arab → Indonesia":
+        arab = True
+    kunci = _polos_arab(q) if arab else q.lower().strip()
+    if not kunci:
+        return []
+    medan = "arab_cari" if arab else "idn_cari"
+    sama, awal, isi = [], [], []
+    for e in entri:
+        v = e[medan]
+        if v == kunci:
+            sama.append(e)
+        elif v.startswith(kunci):
+            awal.append(e)
+        elif kunci in v:
+            isi.append(e)
+    return sama + awal + isi
+
+
+def _kartu(e: dict) -> str:
+    return (f"<div class='kms'><div class='idn'>{esc(e['idn'])}"
+            f"<span class='tma'>{esc(e['tema'])}</span></div>"
+            f"<div class='arb' lang='ar'>{e['arab']}</div></div>")
+
+
+def page_kamus(docs: list):
+    """Kamus Debat: tanpa bacaan, hanya pencarian dua arah."""
+    _css()
+    bahan = tuple((d.get("title") or d.get("source", ""), d.get("text", "")) for d in docs)
+    entri = susun_kamus(bahan)
+    if not entri:
+        st.info("Belum ada entri kosakata yang terbaca.")
+        return
+
+    tema = sorted({e["tema"] for e in entri})
+    st.caption(f"{len(entri)} entri dari {len(tema)} tema. "
+               "Ketik dalam bahasa Indonesia atau Arab — arahnya dikenali sendiri.")
+
+    c1, c2 = st.columns([2, 1.3])
+    q = c1.text_input("Cari kata", key="kamus_cari", placeholder="argumen · حُجَّة · menyanggah …",
+                      label_visibility="collapsed")
+    arah = c2.radio("Arah pencarian", ["Otomatis", "Indonesia → Arab", "Arab → Indonesia"],
+                    horizontal=False, key="kamus_arah", label_visibility="collapsed")
+
+    if q and q.strip():
+        hasil = _cocok(entri, q, arah)
+        if not hasil:
+            st.warning(f"Tidak ada entri yang cocok dengan \u201c{q}\u201d. "
+                       "Coba kata dasarnya, atau tukar arah pencarian.")
+            return
+        st.caption(f"{len(hasil)} entri ditemukan.")
+        for e in hasil[:200]:
+            st.markdown(_kartu(e), unsafe_allow_html=True)
+        if len(hasil) > 200:
+            st.caption(f"Ditampilkan 200 dari {len(hasil)} entri. Persempit pencarian Anda.")
+        return
+
+    pilih = st.selectbox("Atau telusuri per tema", ["—"] + tema, key="kamus_tema")
+    if pilih != "—":
+        isi = [e for e in entri if e["tema"] == pilih]
+        st.markdown(f"<div class='kms-h'>{esc(pilih)} · {len(isi)} entri</div>", unsafe_allow_html=True)
+        for e in isi:
+            st.markdown(_kartu(e), unsafe_allow_html=True)
