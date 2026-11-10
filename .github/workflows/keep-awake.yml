@@ -1,4 +1,4 @@
-# MUNAZIR – Jaga agar aplikasi Streamlit tetap bangun
+# MUNĀẒIR – Jaga agar aplikasi Streamlit tetap bangun
 name: Keep Streamlit Awake
 
 on:
@@ -10,12 +10,16 @@ permissions:
   actions: write              # dibutuhkan agar jadwal tidak dimatikan GitHub setelah 60 hari
 
 env:
-  APP_URL: "https://munadzir-arabic-debate.streamlit.app/"
+  # Daftar alamat yang dibangunkan, satu per baris.
+  # Baris kedua adalah situs lama; hapus baris itu bila tidak dipakai lagi.
+  APP_URLS: |
+    https://munadzir-arabic-debate2.streamlit.app/
+    https://munadzir-arabic-debate.streamlit.app/
 
 jobs:
   wake:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/setup-python@v5
         with:
@@ -29,35 +33,52 @@ jobs:
       - name: Buka & bangunkan aplikasi
         run: |
           python - <<'EOF'
-          import os, re
+          import os, re, sys
           from playwright.sync_api import sync_playwright
 
-          url = os.environ["APP_URL"]
-          wake_text = re.compile(r"get this app back up", re.I)
+          urls = [u.strip() for u in os.environ["APP_URLS"].splitlines() if u.strip()]
+          wake_text = re.compile(r"get this app back up|wake", re.I)
+          gagal = []
 
           with sync_playwright() as p:
               browser = p.chromium.launch()
-              page = browser.new_page()
-              print("Membuka", url)
-              page.goto(url, wait_until="domcontentloaded", timeout=90_000)
-              page.wait_for_timeout(10_000)
+              for url in urls:
+                  print(f"\n=== {url} ===", flush=True)
+                  page = browser.new_page()
+                  try:
+                      page.goto(url, wait_until="domcontentloaded", timeout=90_000)
+                      page.wait_for_timeout(10_000)
 
-              clicked = False
-              for frame in page.frames:
-                  btn = frame.get_by_role("button", name=wake_text)
-                  if btn.count() > 0:
-                      btn.first.click()
-                      clicked = True
-                      break
+                      clicked = False
+                      for frame in page.frames:
+                          btn = frame.get_by_role("button", name=wake_text)
+                          if btn.count() > 0:
+                              btn.first.click()
+                              clicked = True
+                              break
 
-              if clicked:
-                  print("Aplikasi sedang tidur -> tombol bangun diklik. Menunggu aplikasi menyala...")
-                  page.wait_for_timeout(90_000)
-              else:
-                  print("Aplikasi sudah aktif.")
-                  page.wait_for_timeout(15_000)
+                      if clicked:
+                          print("Sedang tidur -> tombol bangun diklik. Menunggu menyala...", flush=True)
+                          page.wait_for_timeout(90_000)
+                      else:
+                          print("Sudah aktif.", flush=True)
+                          page.wait_for_timeout(15_000)
 
+                      judul = (page.title() or "").strip()
+                      print("Judul halaman:", judul or "(kosong)", flush=True)
+                      if not judul:
+                          gagal.append(url)
+                  except Exception as e:
+                      print("GAGAL:", e, flush=True)
+                      gagal.append(url)
+                  finally:
+                      page.close()
               browser.close()
+
+          if gagal:
+              print("\nTidak berhasil dibangunkan:", ", ".join(gagal), flush=True)
+              sys.exit(1)
+          print("\nSemua aplikasi aktif.", flush=True)
           EOF
 
       - name: Cegah jadwal dinonaktifkan otomatis
