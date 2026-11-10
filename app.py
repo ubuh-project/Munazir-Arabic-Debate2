@@ -1734,13 +1734,6 @@ def render_doc_audio(text: str, cat: str, kitab: bool = True, ukuran: int = 26,
     tombol = {baris: (n, potongan) for n, (baris, potongan) in enumerate(blok)}
 
     putar = st.session_state.get("tts_putar")
-    if blok:
-        with st.container(key=f"ttsall_{mode}_{cat}"):
-            st.button(f"Dengarkan seluruh materi · {len(blok)} paragraf",
-                      key=f"ttsallbtn_{mode}_{cat}", icon=":material/playlist_play:",
-                      on_click=pilih_tts, args=(f"SEMUA_{cat}",))
-            if putar == f"SEMUA_{cat}":
-                putar_blok(tuple(potongan for _, potongan in blok))
 
     with st.container(height=640, border=False, key=f"bacaan_{mode}_{cat}"):
         if meta:
