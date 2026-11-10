@@ -463,7 +463,7 @@ def candidate_models(api_key: str):
     return out
 
 
-def call_llm(messages, temperature: float = 0.3, max_tokens: int = 1800) -> str:
+def call_llm(messages, temperature: float = 0.3, max_tokens: int = 1200) -> str:
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError("API key Groq belum diatur. Isi di menu samping atau di Secrets Streamlit (GROQ_API_KEY).")
@@ -541,14 +541,27 @@ def _expand_query_cached(question: str, _key_marker: str) -> str:
 
 
 def expand_query(question: str) -> str:
-    """Terjemahkan pertanyaan ke kata kunci Arab agar file berbahasa Arab tetap ketemu."""
+    """Terjemahkan pertanyaan ke kata kunci Arab agar file berbahasa Arab tetap ketemu.
+
+    Dilewati bila pertanyaannya sudah panjang atau sudah memuat huruf Arab:
+    pencarian biasa sudah cukup, dan satu panggilan API bisa dihemat.
+    """
+    q = (question or "").strip()
+    if len(q.split()) >= 7 or AR_CHARS.search(q):
+        return ""
     try:
         return _expand_query_cached(question, get_api_key()[-6:])
     except Exception:
         return ""
 
 
-def build_context(chunks, limit_chars: int = 6000) -> str:
+# Potongan materi yang dikirim ke AI tiap pertanyaan. Makin kecil, makin banyak
+# pertanyaan yang muat dalam jatah token harian — dengan risiko jawaban sedikit
+# kurang lengkap bila jawabannya tersebar di banyak materi.
+KONTEKS_HURUF = 3500
+
+
+def build_context(chunks, limit_chars: int = KONTEKS_HURUF) -> str:
     out, total = [], 0
     for i, c in enumerate(chunks, 1):
         block = f"[Materi {i}: {c['source']} | Menu: {CATEGORIES[c['cat']]['label']}]\n{c['text']}"
@@ -563,14 +576,14 @@ def answer_question(question: str, cats=None, history=None):
     """Jawab pertanyaan HANYA dari materi MUNĀẒIR (tanpa pencarian internet)."""
     kb = get_kb()
     expansion = expand_query(question) if kb["chunks"] else ""
-    hits = search(kb, f"{question}\n{expansion}", k=6, cats=cats)
+    hits = search(kb, f"{question}\n{expansion}", k=4, cats=cats)
     context = build_context(hits) if hits else "(tidak ada materi yang cocok di basis pengetahuan)"
     messages = [{"role": "system", "content": SYSTEM_CHAT}]
-    for h in (history or [])[-4:]:
+    for h in (history or [])[-2:]:
         if h["role"] == "user":
-            messages.append({"role": "user", "content": h["content"]})
+            messages.append({"role": "user", "content": h["content"][:600]})
         elif h.get("raw"):
-            messages.append({"role": "assistant", "content": h["raw"][:1500]})
+            messages.append({"role": "assistant", "content": h["raw"][:700]})
     messages.append({"role": "user", "content": f"KONTEKS:\n{context}\n\nPERTANYAAN:\n{question}"})
     raw = call_llm(messages)
     parsed = lengkapi_harakat(parse_sections(raw, ("JAWABAN", "ARAB", "SUMBER")))
@@ -1108,10 +1121,34 @@ def pekerja_harakat():
                        "model_terakhir": "", "galat": ""}}
 
 
+def harakat_dimatikan() -> bool:
+    """True bila pekerja harakat sengaja dimatikan lewat Secrets (HARAKAT_OFF = "1").
+
+    Dipakai setelah harakat_cache.json lengkap: situs memakai hasil yang sudah
+    tersimpan saja, dan tidak lagi menghabiskan jatah token untuk menebak harakat.
+    """
+    return _secret("HARAKAT_OFF", "0").strip() in ("1", "true", "True", "ya")
+
+
+def sisa_harakat(docs) -> int:
+    """Berapa potongan Arab yang belum ada harakatnya di gudang."""
+    g = _gudang_harakat()
+    sisa = set()
+    for d in docs or []:
+        for t in kumpulkan_arab(d.get("text", "")) + kumpulkan_arab(d.get("sub", "")) + \
+                 kumpulkan_arab(d.get("source", "")):
+            k = _kunci(t)
+            if k not in g:
+                sisa.add(k)
+    return len(sisa)
+
+
 def mulai_pekerja_harakat(docs):
     """Dipanggil setiap halaman dimuat: perbarui daftar materi & pastikan pekerja berjalan (cepat, tidak menunggu)."""
     import threading
 
+    if harakat_dimatikan():
+        return pekerja_harakat()
     state = pekerja_harakat()
     state.setdefault("jeda", {})
     state["docs"] = docs
@@ -2587,6 +2624,27 @@ def panel_harakat_admin(kb):
         state["segarkan"] = True
         mulai_pekerja_harakat(kb["docs"])
         st.success("Pekerja harakat dijalankan ulang. Muat ulang halaman ini beberapa menit lagi untuk melihat progres.")
+    sisa = sisa_harakat(kb["docs"])
+    st.caption(f"Potongan yang belum berharakat: **{sisa}**" if sisa
+               else "Seluruh materi sudah berharakat — pekerja tidak perlu memanggil AI lagi.")
+    try:
+        if HARAKAT_CACHE_FILE.exists():
+            st.download_button(
+                "Unduh harakat_cache.json",
+                data=HARAKAT_CACHE_FILE.read_bytes(),
+                file_name="harakat_cache.json",
+                mime="application/json",
+                help="Simpan hasil harakat terbaru, lalu unggah menimpa berkas yang sama di GitHub "
+                     "agar hasilnya permanen.",
+            )
+    except Exception:
+        pass
+    if harakat_dimatikan():
+        st.success("Pekerja harakat sedang **dimatikan** (HARAKAT_OFF = \"1\"). "
+                   "Situs memakai harakat yang sudah tersimpan dan tidak memakai jatah token sama sekali.")
+    elif not sisa:
+        st.info("Harakat sudah lengkap. Agar tidak ada panggilan AI sama sekali, isi di "
+                "**Settings → Secrets**: `HARAKAT_OFF = \"1\"`")
     if not (_secret("GITHUB_TOKEN") and _secret("GITHUB_REPO")):
         st.info(
             "Agar hasil harakat **permanen** (tidak hilang saat aplikasi di-restart), isi di **Settings → Secrets**:\n\n"
