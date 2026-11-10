@@ -1834,7 +1834,7 @@ def siapkan_harakat_materi(doc) -> str:
 AUDIO_DIR = STATIC_DIR / "audio"
 # Hanya dua kategori ini yang direkam suaranya; halaman lain tidak menampilkan
 # pilihan audio sama sekali agar tidak menjanjikan sesuatu yang tidak ada.
-KATEGORI_AUDIO = ("ibarah", "kosakata")
+KATEGORI_AUDIO = ("ibarah",)
 
 
 @st.cache_resource(show_spinner=False)
@@ -2247,6 +2247,10 @@ def page_category(cat: str, kb):
     page_header(meta["label"], meta["ar"], meta["desc"], f"Materi · {nomor:02d} dari {len(CATEGORIES):02d}")
     docs = [d for d in kb["docs"] if d["cat"] == cat]
     tambahan.panel_atas(cat)
+    if cat == "kosakata":
+        # Kamus Debat: materinya jadi basis data entri, dibuka lewat pencarian saja
+        tambahan.page_kamus(docs)
+        return
     t1, t2, t3 = st.tabs(["Baca materi", "Cari", "Tanya MUNĀẒIR"])
 
     with t1:
