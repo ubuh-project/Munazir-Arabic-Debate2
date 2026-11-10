@@ -20,6 +20,8 @@ import numpy as np
 import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+import tambahan
+
 # ─────────────────────────────────────────────────────────────
 # KONFIGURASI DASAR
 # ─────────────────────────────────────────────────────────────
@@ -2139,6 +2141,8 @@ def page_home(kb):
         unsafe_allow_html=True,
     )
 
+    tambahan.gambar_beranda()
+
     if ibr:
         st.markdown(
             "<section class='quote reveal'><div>"
@@ -2249,6 +2253,7 @@ def page_category(cat: str, kb):
     nomor = list(CATEGORIES).index(cat) + 1
     page_header(meta["label"], meta["ar"], meta["desc"], f"Materi · {nomor:02d} dari {len(CATEGORIES):02d}")
     docs = [d for d in kb["docs"] if d["cat"] == cat]
+    tambahan.panel_atas(cat)
     t1, t2, t3 = st.tabs(["Baca materi", "Cari", "Tanya MUNĀẒIR"])
 
     with t1:
@@ -2294,9 +2299,13 @@ def page_category(cat: str, kb):
                     pilihan_suara()
             doc = shown[pick]
             teks = siapkan_harakat_materi(doc)
+            asli = doc["text"]
+            if cat == "kosakata":
+                teks = tambahan.ringkas_kamus(teks, cat)
+                asli = tambahan.ringkas_kamus(asli, cat, diam=True)
             if pakai_audio:
                 render_doc_audio(teks, cat, kitab=(mode == "Kertas"), ukuran=ukuran,
-                                 asli=doc["text"])
+                                 asli=asli)
             else:
                 render_doc(teks, kitab=(mode == "Kertas"), ukuran=ukuran)
 
@@ -2711,6 +2720,7 @@ def main():
         "Alat": [
             halaman(lambda: page_translate(get_kb()), "Penerjemah", "penerjemah", ":material/translate:"),
             halaman(page_timer, "Timer Debat", "timer", ":material/timer:"),
+            halaman(tambahan.page_penilaian, "Simulasi Penilaian", "penilaian", ":material/grading:"),
         ],
         "Tentang": [
             halaman(page_profile, "Profil Pengembang", "profil", ":material/person:"),
