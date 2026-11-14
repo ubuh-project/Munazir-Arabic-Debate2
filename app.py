@@ -13,6 +13,7 @@ import json
 import html
 import difflib
 import hashlib
+import unicodedata
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -181,13 +182,22 @@ def normalize_text(t: str) -> str:
     """Normalisasi untuk pencarian: hapus harakat & samakan bentuk huruf Arab."""
     t = AR_DIACRITICS.sub("", t.lower())
     t = re.sub("[إأآٱ]", "ا", t)
-    return t.replace("ى", "ي").replace("ة", "ه").replace("ؤ", "و").replace("ئ", "ي")
+    t = t.replace("ى", "ي").replace("ة", "ه").replace("ؤ", "و").replace("ئ", "ي")
+    # Samakan huruf Latin bertanda transliterasi (ā, ī, ū, ḍ, ṭ, ẓ, ḥ …) dengan huruf biasa,
+    # agar "tafnīd" cocok dengan "tafnid" dan "munāẓarah" cocok dengan "munazarah".
+    if any(ord(c) > 127 and ord(c) < 0x0600 or 0x1E00 <= ord(c) <= 0x1EFF for c in t):
+        t = "".join(c for c in unicodedata.normalize("NFKD", t)
+                    if not (unicodedata.combining(c) and ord(c) < 0x0600))
+        t = unicodedata.normalize("NFC", t)
+    return t.replace("ʿ", "").replace("ʾ", "").replace("'", "")
 
 
 STOPWORDS = set("""apa itu yang dan di ke dari untuk dengan bagaimana berapa adalah ini pada dalam atau cara tentang
 saya kami kita aku anda bisa tolong jelaskan sebutkan berikan mohon contoh contohnya apakah mengapa kenapa siapa kapan
 dimana mana juga akan sudah telah tidak bukan ada saja lebih paling sangat seperti agar supaya jika kalau maka serta
-oleh para sebuah suatu bagi hal tersebut the a an of to in is are what how why which for and or
+oleh para sebuah suatu bagi hal tersebut dimaksud maksud menurut materi munazir munadzir boleh harus perlu
+dapat digunakan dipakai bisa saat selama dijaga peserta debat dalam format qatar
+the a an of to in is are what how why which for and or
 هل ما ماذا كيف لماذا من في على الى إلى عن هذا هذه ذلك التي الذي و أو ثم""".split())
 
 
@@ -404,6 +414,12 @@ def search(kb, query: str, k: int = 6, cats=None, min_score: float = 0.04):
     scores = (kb["mat"] @ kb["vec"].transform([query]).T).toarray().ravel()
     if kb.get("wvec") is not None:  # gabungan pencarian huruf (char) + kata (word)
         scores = 0.5 * scores + 0.5 * (kb["wmat"] @ kb["wvec"].transform([query]).T).toarray().ravel()
+    # Bank mosi berisi ratusan kalimat mosi yang mudah "mirip" dengan pertanyaan apa pun.
+    # Bobotnya diturunkan, kecuali pertanyaannya memang tentang mosi.
+    if not re.search(r"mosi|motion|qad|قضي|موضوع", normalize_text(query)):
+        for i, c in enumerate(kb["chunks"]):
+            if c["source"].startswith(("MIZAN Bab 2 - Bank Mosi", "Al-Murshed - Mosi ")):
+                scores[i] *= 0.5
     results = []
     for i in np.argsort(-scores):
         if scores[i] < min_score:
@@ -502,7 +518,14 @@ ATURAN:
    Jika konteks tidak memuat teks Arab yang relevan, tulis "-".
 5. Bagian SUMBER berisi nama file materi yang benar-benar dipakai, dipisahkan koma. Tulis "-" jika tidak ada.
 6. Setiap kata atau istilah Arab yang muncul di bagian JAWABAN juga WAJIB diberi harakat lengkap.
-7. ISTILAH POI: di MUNĀẒIR, istilah Arab untuk POI (Point of Information) adalah نُقْطَةُ الاِسْتِشَارَةِ.
+7. Konteks bisa berbahasa Arab, Indonesia, atau Inggris. Jika jawabannya ada di konteks berbahasa Arab/Inggris,
+   pahami dan terjemahkan ke bahasa Indonesia; jangan katakan materi tidak tersedia hanya karena bahasanya berbeda.
+8. Angka, durasi, dan jumlah (misalnya jumlah pembicara, menit, detik) WAJIB disalin persis dari konteks.
+   Jangan menghitung, menjumlahkan, atau menyimpulkan angka baru sendiri. Jika konteks menyebut beberapa ketentuan
+   (misalnya untuk universitas dan untuk sekolah), sebutkan semuanya beserta keterangannya.
+9. Jangan memakai blok kode, tanda backtick (`), tabel, atau tag HTML. Tulis teks biasa dengan poin-poin.
+10. Bagian ARAB hanya berisi teks berhuruf Arab. Jika kutipan yang relevan tidak berhuruf Arab, tulis "-".
+11. ISTILAH POI: di MUNĀẒIR, istilah Arab untuk POI (Point of Information) adalah نُقْطَةُ الاِسْتِشَارَةِ.
    Di bagian JAWABAN selalu gunakan istilah ini. Jika konteks memakai الْمُدَاخَلَةُ / الْمُدَاخَلَاتُ,
    jelaskan bahwa itu sebutan lain untuk POI yang sama. Di bagian ARAB, kutipan dari konteks tetap apa adanya.
 
@@ -514,9 +537,14 @@ FORMAT WAJIB (gunakan penanda persis seperti ini):
 [SUMBER]
 ...nama file..."""
 
-SYSTEM_EXPAND = """Ubah pertanyaan pengguna menjadi kata kunci pencarian dwibahasa.
-Tulis dalam SATU baris: kata kunci bahasa Indonesia, lalu terjemahan/istilah bahasa Arab yang setara (istilah debat/munazarah).
-Jangan menjawab pertanyaannya. Jangan beri penjelasan."""
+SYSTEM_EXPAND = """Ubah pertanyaan pengguna menjadi kata kunci pencarian DWIBAHASA untuk materi debat bahasa Arab (munazarah).
+Pertanyaan bisa berbahasa Indonesia atau Arab. Tulis dalam SATU baris:
+kata kunci bahasa Indonesia, lalu istilah bahasa Arab yang setara, lalu padanan bahasa Inggris bila ada.
+Gunakan istilah debat baku, misalnya: argumen = حجة, sanggahan = تفنيد, definisi = تعريف, mosi = قضية,
+tim pendukung = فريق الموالاة, tim penentang = فريق المعارضة, pidato balasan = خطاب الرد (reply speech),
+POI = نقطة الاستشارة مداخلة, durasi = مدة دقائق, etika = آداب أخلاق احترام, pembukaan = مقدمة افتتاح,
+bertanya = سؤال تساؤل, data/persentase = إحصائيات نسبة بالمائة.
+Jangan menjawab pertanyaannya. Jangan beri penjelasan. Maksimal 25 kata."""
 
 SYSTEM_TRANSLATE = """Kamu adalah penerjemah ahli bahasa Indonesia ⇄ bahasa Arab fusha, khusus konteks debat (munazarah).
 Jika GLOSARIUM diberikan, utamakan istilah baku dari glosarium tersebut.
@@ -541,13 +569,14 @@ def _expand_query_cached(question: str, _key_marker: str) -> str:
 
 
 def expand_query(question: str) -> str:
-    """Terjemahkan pertanyaan ke kata kunci Arab agar file berbahasa Arab tetap ketemu.
+    """Terjemahkan pertanyaan menjadi kata kunci dua arah (Indonesia ⇄ Arab).
 
-    Dilewati bila pertanyaannya sudah panjang atau sudah memuat huruf Arab:
-    pencarian biasa sudah cukup, dan satu panggilan API bisa dihemat.
+    Selalu dijalankan, termasuk untuk pertanyaan panjang dan pertanyaan berbahasa Arab,
+    karena sebagian materi hanya berbahasa Arab dan sebagian lagi hanya berbahasa Indonesia.
+    Hasilnya disimpan di cache sehingga pertanyaan yang sama tidak memakan jatah API lagi.
     """
     q = (question or "").strip()
-    if len(q.split()) >= 7 or AR_CHARS.search(q):
+    if not q or len(q) < 4:
         return ""
     try:
         return _expand_query_cached(question, get_api_key()[-6:])
@@ -558,7 +587,7 @@ def expand_query(question: str) -> str:
 # Potongan materi yang dikirim ke AI tiap pertanyaan. Makin kecil, makin banyak
 # pertanyaan yang muat dalam jatah token harian — dengan risiko jawaban sedikit
 # kurang lengkap bila jawabannya tersebar di banyak materi.
-KONTEKS_HURUF = 3500
+KONTEKS_HURUF = 5000
 
 
 def build_context(chunks, limit_chars: int = KONTEKS_HURUF) -> str:
@@ -576,7 +605,7 @@ def answer_question(question: str, cats=None, history=None):
     """Jawab pertanyaan HANYA dari materi MUNĀẒIR (tanpa pencarian internet)."""
     kb = get_kb()
     expansion = expand_query(question) if kb["chunks"] else ""
-    hits = search(kb, f"{question}\n{expansion}", k=4, cats=cats)
+    hits = search(kb, f"{question}\n{expansion}", k=6, cats=cats)
     context = build_context(hits) if hits else "(tidak ada materi yang cocok di basis pengetahuan)"
     messages = [{"role": "system", "content": SYSTEM_CHAT}]
     for h in (history or [])[-2:]:
@@ -1596,7 +1625,10 @@ def bungkus_arab(t: str) -> str:
 
 def md_arab(t: str) -> str:
     """Untuk teks markdown (jawaban AI): amankan tag HTML, lalu beri jarak pada teks Arab."""
-    t = (t or "").replace("&", "&amp;").replace("<", "&lt;")
+    t = re.sub(r"^\s*```.*$", "", t or "", flags=re.M).replace("`", "")
+    # baris berindentasi 4+ spasi dianggap blok kode oleh markdown: rapikan indentasinya
+    t = re.sub(r"^ {4,}(?=\S)", "   ", t, flags=re.M)
+    t = t.replace("&", "&amp;").replace("<", "&lt;")
     return bungkus_arab(t)
 
 
@@ -1642,7 +1674,7 @@ def render_answer(parsed: dict, hits=None):
     sumber = parsed.get("SUMBER", "").strip()
     if jawaban:
         st.markdown(md_arab(jawaban), unsafe_allow_html=True)
-    if arab and arab != "-":
+    if arab and arab != "-" and rasio_arab(arab) >= 0.5:
         kotak_arab(fmt_inline(arab))
         with st.expander("Salin teks Arab"):
             st.code(arab, language=None)
