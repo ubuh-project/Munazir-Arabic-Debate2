@@ -128,7 +128,7 @@ IKON_MENU = {
 }
 
 # Link Google Form untuk menu Respon (tempel link form Anda di antara tanda kutip)
-FORM_URL = "https://forms.gle/rwseAxjWB6oexi3m9"
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeVynV0jbVFpH8NwOSoMjMX97APmpQ7xIo4eQqDBRmPZG7SMg/viewform"
 
 # ── PROFIL PENGEMBANG ── (cukup ganti teks di antara tanda kutip)
 PROFIL = {
@@ -2586,6 +2586,7 @@ def page_feedback():
     if "docs.google.com/forms" in url and "embedded=true" not in url:
         url += ("&" if "?" in url else "?") + "embedded=true"
     st.markdown("Terima kasih telah menggunakan **MUNĀẒIR**. Respon Anda membantu kami memperbaiki website ini.")
+    st.caption("Jika formulir meminta login Google dan tidak bisa diisi di halaman ini, klik tombol di bawah formulir untuk membukanya di tab baru.")
     import streamlit.components.v1 as components
     components.iframe(url, height=1100, scrolling=True)
     st.link_button("Formulir tidak muncul? Buka di tab baru ↗", url.replace("embedded=true", "").rstrip("?&"))
