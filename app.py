@@ -103,9 +103,22 @@ LOGO_GAMBAR = "logo3d.webp"
 LOGO_VIDEO = [("logo3d.webm", "video/webm"), ("logo3d.mp4", "video/mp4")]
 SPLASH_DETIK = 4.2  # lama layar pembuka tampil sebelum memudar (detik)
 
+# ── LOGO VIDEO (MEDALI) ──
+# Video logo diputar SEKALI, lalu berhenti pada logo utuh. Diletakkan di dalam lingkaran
+# krem berbingkai emas agar logo cokelat-emasnya tetap jelas di atas panel zamrud.
+#   static/logo-munazir.mp4  ← video logo (persegi, tanpa suara)
+#   static/logo-munazir.jpg  ← gambar logo utuh, tampil selama video dimuat
+# Bila logo-munazir.mp4 ada, berkas ini yang dipakai (logo3d.webp/mp4 diabaikan).
+LOGO_MEDALI = "logo-munazir.mp4"
+LOGO_POSTER = "logo-munazir.jpg"
+
 
 def video_logo(kelas: str, ulang: bool = True) -> str:
-    """Logo 3D beranimasi: gambar WebP transparan (utama) atau <video> (cadangan); kosong bila belum ada file."""
+    """Logo beranimasi: video medali (utama), gambar WebP transparan, atau <video> cadangan; kosong bila belum ada file."""
+    if (STATIC_DIR / LOGO_MEDALI).exists():
+        poster = f" poster='app/static/{LOGO_POSTER}'" if (STATIC_DIR / LOGO_POSTER).exists() else ""
+        return (f"<div class='{kelas} medali'><video class='medali-v' autoplay muted playsinline preload='auto'{poster} "
+                f"aria-label='Logo MUNĀẒIR'><source src='app/static/{LOGO_MEDALI}' type='video/mp4'></video></div>")
     if (STATIC_DIR / LOGO_GAMBAR).exists():
         return f"<img class='{kelas}' src='app/static/{LOGO_GAMBAR}' alt='Logo MUNĀẒIR' decoding='async'>"
     sumber = "".join(
@@ -1599,6 +1612,54 @@ video.hero-logo, video.splash-logo{ -webkit-mask-image:radial-gradient(ellipse 6
   [class*="st-key-bacaan_"]{ padding:1.4rem .9rem 1.8rem; }
 }
 
+/* ───────── Logo medali (video) ─────────
+   Lingkaran krem berbingkai emas; videonya sedikit diperkecil agar tulisan logo tidak terpotong,
+   dan sudut video dilebur ke warna lingkaran. */
+.medali{ position:relative; aspect-ratio:1 / 1; border-radius:50%; overflow:hidden; background:#F4EEE1;
+  box-shadow:0 0 0 1px rgba(198,161,91,.8), 0 0 0 7px rgba(198,161,91,.14), 0 24px 46px -24px rgba(0,0,0,.7); }
+.hero .hero-logo.medali{ background:#F4EEE1; border:0; }
+.medali-v{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scale(.9);
+  -webkit-mask-image:radial-gradient(circle closest-corner at 50% 50%, #000 75%, transparent 100%);
+  mask-image:radial-gradient(circle closest-corner at 50% 50%, #000 75%, transparent 100%); }
+.splash-logo.medali{ width:min(52vw, 300px); }
+
+/* ───────── Beranda: alat belajar ───────── */
+.alat{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:.9rem; }
+.alat li{ margin:0; }
+.alat a{ position:relative; display:flex; flex-direction:column; gap:.35rem; height:100%; padding:1.15rem 1.15rem 1rem;
+  background:var(--paper-2); border:1px solid var(--rule); border-radius:12px; text-decoration:none !important; color:var(--ink) !important;
+  transition:transform .25s var(--ease), border-color .25s, box-shadow .25s; }
+.alat a:hover{ transform:translateY(-3px); border-color:var(--brass); box-shadow:0 18px 30px -24px rgba(16,42,39,.6); }
+.alat-k{ font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; font-weight:600; color:var(--brass-ink); }
+.alat-t{ font-family:var(--serif); font-size:1.18rem; line-height:1.25; color:var(--ink); }
+.alat-d{ font-size:.85rem; line-height:1.55; color:var(--muted); flex:1; }
+.alat-b{ display:flex; justify-content:space-between; align-items:flex-end; margin-top:.4rem; }
+.alat-ar{ font-family:var(--arab-judul); font-size:1.3rem; line-height:1.9; color:var(--brass-ink); }
+.alat-go{ display:inline-block; transition:transform .3s var(--ease); }
+.alat a:hover .alat-go{ transform:translateX(5px); color:var(--brass-ink); }
+
+/* ───────── Panduan penggunaan ───────── */
+.pd-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:1rem; margin-top:.4rem; }
+.pd{ background:var(--paper-2); border:1px solid var(--rule); border-radius:12px; padding:1.3rem 1.4rem 1.2rem; }
+.pd-h{ display:flex; justify-content:space-between; align-items:baseline; gap:1rem; }
+.pd-t{ font-family:var(--serif); font-size:1.25rem; line-height:1.25; color:var(--ink); }
+.pd-ar{ font-family:var(--arab-judul); font-size:1.25rem; line-height:1.9; color:var(--brass-ink); white-space:nowrap; }
+.pd-u{ font-size:.88rem; line-height:1.6; color:var(--muted); margin:.35rem 0 .8rem; }
+.pd ol{ counter-reset:langkah; list-style:none; margin:0; padding:0; }
+.pd ol li{ counter-increment:langkah; position:relative; padding:.45rem 0 .45rem 2.1rem; font-size:.92rem; line-height:1.6;
+  color:var(--ink-2); border-top:1px solid var(--rule-soft); margin:0; }
+.pd ol li:first-child{ border-top:0; }
+.pd ol li::before{ content:counter(langkah); position:absolute; left:0; top:.55rem; width:1.45rem; height:1.45rem; border-radius:50%;
+  display:grid; place-items:center; font-family:var(--serif); font-size:.8rem; color:var(--brass-ink); border:1px solid var(--brass); }
+.pd-link{ display:inline-block; margin-top:.8rem; font-size:.85rem; font-weight:500; color:var(--brass-ink) !important;
+  text-decoration:none !important; border-bottom:1px solid rgba(198,161,91,.55); }
+.pd-link:hover{ color:var(--ink) !important; }
+.pd-tips{ margin-top:1.4rem; background:var(--umber); color:var(--cream); border-radius:14px; padding:1.4rem clamp(1.2rem, 3vw, 2rem); }
+.pd-tips .eyebrow{ color:var(--brass); }
+.pd-tips ul{ margin:.7rem 0 0; padding-left:1.1rem; }
+.pd-tips li{ color:#DCE7DF; line-height:1.7; font-size:.93rem; margin:.25rem 0; }
+.pd-tips b{ color:var(--cream); }
+
 /* Hormati pengguna yang mematikan animasi */
 @media (prefers-reduced-motion: reduce){
   *, *::before, *::after{ animation:none !important; transition:none !important; }
@@ -1866,6 +1927,26 @@ def mosi_harian(kb):
                 if (ar, idn) not in [(h[1], h[2]) for h in hasil]:
                     hasil.append((tema.strip(), ar.strip(), idn.strip()))
     return hasil[hari_ini_index(len(hasil))] if hasil else None
+
+
+# Dipakai bila materi Mosi/Muqaddimah belum memuat pola "Tema: … / الْقَضِيَّةُ: … / Mosi: …",
+# agar kartu "Mosi hari ini" di Beranda tidak pernah kosong.
+MOSI_CADANGAN = [
+    ("Pendidikan", "يَرَى هَذَا الْمَجْلِسُ أَنَّ التَّعْلِيمَ عَنْ بُعْدٍ أَفْضَلُ مِنَ التَّعْلِيمِ الْحُضُورِيِّ.",
+     "Dewan ini meyakini bahwa pembelajaran jarak jauh lebih baik daripada pembelajaran tatap muka."),
+    ("Teknologi", "يُؤَيِّدُ هَذَا الْمَجْلِسُ حَظْرَ وَسَائِلِ التَّوَاصُلِ الِاجْتِمَاعِيِّ عَلَى مَنْ هُمْ دُونَ السَّادِسَةَ عَشْرَةَ.",
+     "Dewan ini mendukung larangan media sosial bagi anak di bawah usia enam belas tahun."),
+    ("Lingkungan", "يَرَى هَذَا الْمَجْلِسُ أَنَّ عَلَى الدُّوَلِ النَّامِيَةِ تَقْدِيمَ التَّنْمِيَةِ الِاقْتِصَادِيَّةِ عَلَى حِمَايَةِ الْبِيئَةِ.",
+     "Dewan ini meyakini bahwa negara berkembang harus mendahulukan pembangunan ekonomi daripada perlindungan lingkungan."),
+    ("Sosial", "يُؤَيِّدُ هَذَا الْمَجْلِسُ إِلْزَامَ طُلَّابِ الْجَامِعَاتِ بِالْخِدْمَةِ الْمُجْتَمَعِيَّةِ.",
+     "Dewan ini mendukung kewajiban pengabdian masyarakat bagi mahasiswa."),
+    ("Kecerdasan buatan", "يَرَى هَذَا الْمَجْلِسُ أَنَّ الذَّكَاءَ الِاصْطِنَاعِيَّ يُشَكِّلُ تَهْدِيدًا لِمُسْتَقْبَلِ التَّعْلِيمِ.",
+     "Dewan ini meyakini bahwa kecerdasan buatan merupakan ancaman bagi masa depan pendidikan."),
+]
+
+
+def mosi_cadangan():
+    return MOSI_CADANGAN[hari_ini_index(len(MOSI_CADANGAN))]
 
 
 def ibarah_harian(kb):
@@ -2141,7 +2222,7 @@ def putar_audio_arab(teks: str, autoplay: bool = True):
 # ─────────────────────────────────────────────────────────────
 def page_home(kb):
     docs = kb["docs"]
-    mosi, ibr = mosi_harian(kb), ibarah_harian(kb)
+    mosi, ibr = mosi_harian(kb) or mosi_cadangan(), ibarah_harian(kb)
     # teks Arab mosi & ibarah harian ditampilkan dengan harakat yang sudah tersedia
     if mosi:
         mosi = (terapkan_harakat(mosi[0]), terapkan_harakat(mosi[1]), mosi[2])
@@ -2186,6 +2267,29 @@ def page_home(kb):
     )
 
     tambahan.kamus_beranda(kb["docs"])
+
+    alat = [
+        ("chat", "Bertanya", "Chat MUNĀẒIR", "Tanya apa saja; dijawab dari materi, lengkap dengan teks Arab dan sumbernya.", "حوار"),
+        ("penerjemah", "Menerjemah", "Penerjemah", "Indonesia ⇄ Arab memakai istilah debat, lengkap dengan harakat.", "ترجمة"),
+        ("timer", "Berlatih", "Timer Debat", "Urutan pembicara, sisa waktu, dan kapan POI boleh diajukan.", "توقيت"),
+        ("penilaian", "Menilai", "Simulasi Penilaian", "Lembar nilai juri: isi, gaya, strategi, dan pemenangnya.", "تحكيم"),
+        ("panduan", "Memulai", "Panduan Penggunaan", "Langkah singkat memakai setiap fitur di website ini.", "دليل"),
+    ]
+    kartu_alat = "".join(
+        f"<li class='reveal' style='--i:{i}'><a href='{alamat}' target='_self'>"
+        f"<span class='alat-k'>{esc(kata)}</span><span class='alat-t'>{esc(judul)}</span>"
+        f"<span class='alat-d'>{esc(ket)}</span>"
+        f"<span class='alat-b'><span class='alat-go' aria-hidden='true'>→</span>"
+        f"<span class='alat-ar' dir='rtl' lang='ar'>{ar}</span></span></a></li>"
+        for i, (alamat, kata, judul, ket, ar) in enumerate(alat, 1)
+    )
+    st.markdown(
+        "<section class='sec'><div class='sec-head'><div><div class='eyebrow'>Alat belajar</div>"
+        "<div class='sec-t'>Apa yang bisa Anda lakukan di sini</div></div>"
+        "<p class='sec-note'>Selain membaca materi, gunakan alat berikut untuk bertanya, menerjemah, dan berlatih.</p></div>"
+        f"<ol class='alat'>{kartu_alat}</ol></section>",
+        unsafe_allow_html=True,
+    )
 
     baris = ""
     for i, (cat, meta) in enumerate(CATEGORIES.items(), 1):
@@ -2592,6 +2696,104 @@ def page_feedback():
     st.link_button("Formulir tidak muncul? Buka di tab baru ↗", url.replace("embedded=true", "").rstrip("?&"))
 
 
+PANDUAN_MULAI = [
+    ("Pilih materi", "Buka menu Materi di atas, lalu pilih salah satu dari lima bagian."),
+    ("Baca dan cari", "Baca di tab Baca materi; pakai tab Cari untuk menemukan kata kunci."),
+    ("Tanyakan", "Bila ada yang belum jelas, tanyakan di Chat MUNĀẒIR."),
+    ("Berlatih", "Latih pidato dengan Timer Debat, lalu nilai latihannya di Simulasi Penilaian."),
+]
+
+PANDUAN_FITUR = [
+    ("Beranda", "الصفحة الرئيسية", "beranda",
+     "Titik awal: mosi hari ini, kamus cepat, daftar isi, dan skema format debat.",
+     ["Baca kartu <b>Mosi hari ini</b>; mosinya berganti setiap hari.",
+      "Ketik kata Indonesia atau Arab di <b>Kamus cepat</b> untuk melihat padanannya.",
+      "Klik salah satu bagian di <b>Daftar isi</b> untuk langsung membuka materinya."]),
+    ("Menu Materi", "المواد", "sistem_debat",
+     "Kumpulan Sistem Debat, Mosi, Ibarah, dan Muqaddimah.",
+     ["Pilih <b>Subtopik</b> dan <b>Materi yang dibaca</b>, atau buka <b>Daftar isi</b> lalu klik judulnya.",
+      "Atur <b>Tampilan baca</b> (Kertas atau Malam) dan geser <b>Ukuran teks Arab</b> sesuai kenyamanan.",
+      "Di menu Ibarah, nyalakan <b>Audio</b> lalu tekan <b>Dengarkan</b> pada paragraf Arab.",
+      "Diagram dan video rujukan ada di bagian atas halaman materi.",
+      "Pakai tab <b>Cari</b> untuk kata kunci, atau tab <b>Tanya MUNĀẒIR</b> untuk pertanyaan seputar bagian itu."]),
+    ("Kamus Debat", "قاموس المناظرة", "kosakata",
+     "Pencarian kosakata debat dua arah, Indonesia ⇄ Arab.",
+     ["Ketik kata dalam bahasa Indonesia atau Arab; arah pencarian dikenali otomatis.",
+      "Atau pilih salah satu tema untuk melihat seluruh kosakatanya.",
+      "Bila tidak ketemu, coba kata dasarnya atau ubah arah pencarian."]),
+    ("Chat MUNĀẒIR", "حوار مع مناظر", "chat",
+     "Asisten yang menjawab hanya dari materi MUNĀẒIR.",
+     ["Tulis pertanyaan dalam bahasa Indonesia atau Arab, atau tekan salah satu contoh pertanyaan.",
+      "Persempit pencarian lewat pilihan <b>Cari di menu</b> bila perlu.",
+      "Jawaban berisi penjelasan, teks Arab dari sumber, dan nama file sumbernya.",
+      "Buka <b>Cuplikan materi</b> di bawah jawaban untuk memeriksa sumbernya."]),
+    ("Penerjemah", "المترجم", "penerjemah",
+     "Terjemahan Indonesia ⇄ Arab dengan istilah debat.",
+     ["Pilih <b>Arah terjemahan</b> (Otomatis juga bisa) dan <b>Gaya bahasa</b>.",
+      "Centang <b>Beri harakat</b> agar teks Arab mudah dibaca.",
+      "Tempel teks, tekan <b>Terjemahkan</b>, lalu baca <b>Catatan istilah</b> di bawahnya."]),
+    ("Timer Debat", "مؤقت المناظرة", "timer",
+     "Pengatur waktu untuk latihan dan simulasi lomba.",
+     ["Atur durasi pidato utama dan pidato balasan (bawaan 7 dan 4 menit).",
+      "Tekan <b>Mulai</b>; pindah pembicara dengan <b>Berikutnya</b>.",
+      "Hijau berarti POI boleh diajukan, kuning waktu terlindungi, merah waktu habis.",
+      "Nyalakan suara perangkat agar bel terdengar saat fase berganti."]),
+    ("Simulasi Penilaian", "محاكاة التحكيم", "penilaian",
+     "Lembar nilai juri untuk latihan menilai debat.",
+     ["Tulis mosi serta nama tim pro dan kontra.",
+      "Isi nilai <b>Isi</b> (maks. 40), <b>Gaya</b> (maks. 40), dan <b>Strategi</b> (maks. 20) untuk setiap pembicara.",
+      "Total dan pemenang dihitung otomatis; tekan <b>Unduh lembar penilaian</b> untuk menyimpannya."]),
+    ("Respon", "آراء المستخدمين", "respon",
+     "Formulir untuk menyampaikan pengalaman, kritik, dan saran.",
+     ["Isi formulir di halaman Respon, lalu kirim.",
+      "Laporkan juga teks Arab atau harakat yang terlihat janggal."]),
+]
+
+PANDUAN_TIPS = [
+    "Jawaban AI disusun hanya dari materi MUNĀẒIR, tetapi tetap bisa keliru. "
+    "<b>Periksa cuplikan sumbernya</b>, dan bila ragu, rujuk materi atau pengajar.",
+    "Harakat dilengkapi otomatis secara bertahap. Bila ada yang janggal, laporkan lewat menu <b>Respon</b>.",
+    "Bila muncul layar bertuliskan aplikasi sedang tidur, tekan tombol untuk membangunkannya dan tunggu sekitar satu menit.",
+    "Gunakan browser terbaru (Chrome, Edge, atau Safari) dan nyalakan suara untuk audio dan bel timer.",
+    "Riwayat chat dan nilai simulasi <b>tidak disimpan</b>. Unduh lembar penilaian sebelum menutup halaman.",
+    "Menu <b>Kelola Materi</b> khusus untuk pengelola website.",
+]
+
+
+def page_panduan():
+    page_header("Panduan Penggunaan", "دَلِيلُ الِاسْتِخْدَامِ",
+                "Langkah singkat memakai setiap fitur MUNĀẒIR, untuk mahasiswa, pengajar, dan validator.", "Tentang")
+    langkah = "".join(
+        f"<li><span class='st-n'>{n}</span><div class='st-t'>{esc(t)}</div><div class='st-d'>{esc(d)}</div></li>"
+        for n, (t, d) in enumerate(PANDUAN_MULAI, 1)
+    )
+    st.markdown(
+        "<section><div class='sec-head'><div><div class='eyebrow'>Mulai cepat</div>"
+        "<div class='sec-t'>Empat langkah pertama</div></div></div>"
+        f"<ol class='steps'>{langkah}</ol></section>",
+        unsafe_allow_html=True,
+    )
+    kartu = "".join(
+        f"<div class='pd'><div class='pd-h'><div class='pd-t'>{esc(judul)}</div>"
+        f"<div class='pd-ar' dir='rtl' lang='ar'>{ar}</div></div>"
+        f"<p class='pd-u'>{esc(guna)}</p><ol>{''.join(f'<li>{b}</li>' for b in butir)}</ol>"
+        f"<a class='pd-link' href='{alamat}' target='_self'>Buka {esc(judul)} →</a></div>"
+        for judul, ar, alamat, guna, butir in PANDUAN_FITUR
+    )
+    st.markdown(
+        "<section class='sec'><div class='sec-head'><div><div class='eyebrow'>Fitur demi fitur</div>"
+        "<div class='sec-t'>Cara memakai setiap menu</div></div>"
+        "<p class='sec-note'>Setiap kartu berisi kegunaan menu dan langkah memakainya.</p></div>"
+        f"<div class='pd-grid'>{kartu}</div></section>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<div class='pd-tips'><div class='eyebrow'>Tips dan batasan</div><ul>"
+        + "".join(f"<li>{t}</li>" for t in PANDUAN_TIPS) + "</ul></div>",
+        unsafe_allow_html=True,
+    )
+
+
 def link_kontak(jenis: str, nilai: str) -> str:
     """Ubah isi kontak menjadi link: WhatsApp → wa.me, Instagram → instagram.com, Email → mailto."""
     v, j = nilai.strip(), jenis.lower()
@@ -2813,6 +3015,7 @@ def main():
             halaman(tambahan.page_penilaian, "Simulasi Penilaian", "penilaian", ":material/grading:"),
         ],
         "Tentang": [
+            halaman(page_panduan, "Panduan Penggunaan", "panduan", ":material/help:"),
             halaman(page_profile, "Profil Pengembang", "profil", ":material/person:"),
             halaman(page_feedback, "Respon", "respon", ":material/rate_review:"),
             halaman(lambda: page_manage(get_kb()), "Kelola Materi", "kelola", ":material/upload_file:"),
