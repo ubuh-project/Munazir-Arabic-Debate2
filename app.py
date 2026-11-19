@@ -141,7 +141,7 @@ IKON_MENU = {
 }
 
 # Link Google Form untuk menu Respon (tempel link form Anda di antara tanda kutip)
-FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeVynV0jbVFpH8NwOSoMjMX97APmpQ7xIo4eQqDBRmPZG7SMg/viewform"
+FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSejhX9o7q3rMiKza25V9t0DHRCSwjskKdq-xFqACFfbc65aAQ/viewform?usp=dialog"
 
 # ── PROFIL PENGEMBANG ── (cukup ganti teks di antara tanda kutip)
 PROFIL = {
